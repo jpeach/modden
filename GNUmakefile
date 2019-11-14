@@ -12,27 +12,29 @@ SRC := $(BIN).tgz
 .PHONY: help
 help:
 	@echo "$(BIN)"
+	@echo
+	@echo Targets:
+	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z0-9._-]+:.*?## / {printf "  %-20s %s\n", $$1, $$2}' $(MAKEFILE_LIST) | sort
 
 .PHONY: build
 build: ## Build
-	$(GO) build -o $(BIN) ./cmd
+	$(GO) build -o $(BIN) .
 
 .PHONY: check
 check: ## Run tests
 check: check-tests check-lint check-tidy
-	$(GO) test -cover -v ./...
 
 .PHONY: check-tests
 check-tests: ## Run tests
-	$(GO) test -cover -v ./...
+	@$(GO) test -cover -v ./...
 
 .PHONY: check-tidy
 check-tidy: ## Run linters
-	$(GO) mod tidy
+	@$(GO) mod tidy
 
 .PHONY: check-lint
 check-lint: ## Run linters
-	docker run \
+	@docker run \
 		--rm \
 		--volume $$(pwd):/app \
 		--workdir /app \
@@ -46,6 +48,7 @@ clean: ## Remove output files
 	$(GO) clean ./...
 
 .PHONY: archive
+archive: ## Create a source archive
 archive: $(SRC)
 $(SRC):
 	$(GIT) archive --prefix=$(BIN)/ --format=tgz -o $@ HEAD
