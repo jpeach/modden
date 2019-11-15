@@ -24,7 +24,33 @@ func TestParseFragment(t *testing.T) {
 			fragType := f.Decode()
 
 			if diff := cmp.Diff(tc.Want, fragType); diff != "" {
-				t.Fatalf(diff)
+				t.Errorf(diff)
+			}
+
+			switch fragType {
+			case FragmentTypeUnknown:
+				if f.Object() != nil {
+					t.Errorf("non-nil object for unknown fragment")
+				}
+				if f.Rego() != nil {
+					t.Errorf("non-nil module for unknown fragment")
+				}
+			case FragmentTypeObject:
+				if f.Object() == nil {
+					t.Errorf("nil object for object fragment")
+				}
+				if f.Rego() != nil {
+					t.Errorf("non-nil module for object fragment")
+				}
+			case FragmentTypeRego:
+				if f.Object() != nil {
+					t.Errorf("non-nil object for rego fragment")
+				}
+				if f.Rego() == nil {
+					t.Errorf("nil module for rego fragment")
+				}
+			default:
+				t.Errorf("invalid fragment type %d", fragType)
 			}
 		})
 	}
@@ -70,6 +96,22 @@ metadata:
 }
     `,
 		Want: FragmentTypeObject,
+	})
+
+	run(t, "Rego composite value", testcase{
+		Data: `
+		rect := {"width": 2, "height": 4}`,
+		Want: FragmentTypeRego,
+	})
+
+	run(t, "Rego rule", testcase{
+		Data: `t { x := 42; y := 41; x > y }`,
+		Want: FragmentTypeRego,
+	})
+
+	run(t, "Rego module", testcase{
+		Data: ` t { x := 42; y := 41; x > y } `,
+		Want: FragmentTypeRego,
 	})
 
 }

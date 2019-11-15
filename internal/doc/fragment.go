@@ -2,7 +2,9 @@ package doc
 
 import (
 	"bytes"
+	"io"
 
+	"github.com/open-policy-agent/opa/ast"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/util/yaml"
 )
@@ -37,6 +39,7 @@ type Fragment struct {
 	Type  FragmentType
 
 	object *unstructured.Unstructured
+	module *ast.Module
 }
 
 // Object returns the Kubernetes object if there is one.
@@ -44,6 +47,16 @@ func (f *Fragment) Object() *unstructured.Unstructured {
 	switch f.Type {
 	case FragmentTypeObject:
 		return f.object
+	default:
+		return nil
+	}
+}
+
+// Rego returns the Rego module if there is one.
+func (f *Fragment) Rego() *ast.Module {
+	switch f.Type {
+	case FragmentTypeRego:
+		return f.module
 	default:
 		return nil
 	}
@@ -65,14 +78,42 @@ func hasKindVersion(u *unstructured.Unstructured) bool {
 	return len(k.Version) > 0 && len(k.Kind) > 0
 }
 
+func decodeModule(data []byte) (*ast.Module, error) {
+	// Rego requires a package name to generate any Rules.
+	// For now, we force a "main" package since fragments
+	// are anonymous.
+	mod := "package main\n" + string(data)
+
+	m, err := ast.ParseModule("main", mod)
+	if err != nil {
+		return nil, err
+	}
+
+	// ParseModule can return nil with no error (empty module).
+	if m == nil {
+		return nil, io.EOF
+	}
+
+	return m, nil
+}
+
 // Decode attempts to parse the Fragment.
-func (f Fragment) Decode() FragmentType {
-	u, err := decodeYAMLOrJSON(f.Bytes)
-	if err == nil {
+func (f *Fragment) Decode() FragmentType {
+	if u, err := decodeYAMLOrJSON(f.Bytes); err == nil {
 		// It's only a valid object if it has a version & kind.
 		if hasKindVersion(u) {
 			f.Type = FragmentTypeObject
 			f.object = u
+			return f.Type
+		}
+	}
+
+	if m, err := decodeModule(f.Bytes); err == nil {
+		// Rego will parse raw JSON and YAML, but in that case there
+		// won't be a any rules in the
+		if m.Rules != nil && len(m.Rules) > 0 {
+			f.Type = FragmentTypeRego
+			f.module = m
 			return f.Type
 		}
 	}
