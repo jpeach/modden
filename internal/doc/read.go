@@ -4,12 +4,8 @@ import (
 	"bufio"
 	"bytes"
 	"io"
-	"log"
 	"regexp"
 )
-
-// Fragment is a parseable portion of a Document.
-type Fragment []byte
 
 // Document is a collection of related Fragments.
 type Document struct {
@@ -33,17 +29,14 @@ func splitDocuments(data []byte, atEOF bool) (int, []byte, error) {
 			// Advance over the separator.
 			advance := m[1]
 
-			log.Printf("advancing %d", advance)
 			return advance, token, nil
 		}
 	}
 
 	if atEOF {
-		log.Printf("at eof")
 		return len(data), bytes.TrimSuffix(data, []byte{'-', '-', '-'}), nil
 	}
 
-	log.Printf("need more")
 	// Keep reading ...
 	return 0, nil, nil
 }
@@ -58,7 +51,7 @@ func ReadDocument(in io.Reader) (*Document, error) {
 	scanner.Split(splitDocuments)
 
 	for scanner.Scan() {
-		doc.Parts = append(doc.Parts, scanner.Bytes())
+		doc.Parts = append(doc.Parts, Fragment{Bytes: scanner.Bytes()})
 	}
 
 	if err := scanner.Err(); err != nil {

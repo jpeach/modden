@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 )
 
 func TestReadDocument(t *testing.T) {
@@ -23,7 +24,7 @@ func TestReadDocument(t *testing.T) {
 				t.Fatalf("read error: %s", err)
 			}
 
-			if diff := cmp.Diff(&tc.Want, got); diff != "" {
+			if diff := cmp.Diff(&tc.Want, got, cmpopts.IgnoreUnexported(Fragment{})); diff != "" {
 				t.Fatalf(diff)
 			}
 		})
@@ -38,7 +39,9 @@ func TestReadDocument(t *testing.T) {
 		Data: "one",
 		Want: Document{
 			Parts: []Fragment{
-				[]byte{'o', 'n', 'e'},
+				Fragment{
+					Bytes: []byte{'o', 'n', 'e'},
+				},
 			},
 		},
 	})
@@ -49,9 +52,9 @@ func TestReadDocument(t *testing.T) {
 ---`,
 		Want: Document{
 			Parts: []Fragment{
-				[]byte{},
-				[]byte{},
-				[]byte{},
+				Fragment{Bytes: []byte{}},
+				Fragment{Bytes: []byte{}},
+				Fragment{Bytes: []byte{}},
 			},
 		},
 	})
@@ -64,9 +67,9 @@ b
 c`,
 		Want: Document{
 			Parts: []Fragment{
-				[]byte{'a', '\n'},
-				[]byte{'b', '\n'},
-				[]byte{'c'},
+				Fragment{Bytes: []byte{'a', '\n'}},
+				Fragment{Bytes: []byte{'b', '\n'}},
+				Fragment{Bytes: []byte{'c'}},
 			},
 		},
 	})
@@ -80,9 +83,9 @@ c
 ---`,
 		Want: Document{
 			Parts: []Fragment{
-				[]byte{'a', '\n'},
-				[]byte{'b', '\n'},
-				[]byte{'c', '\n'},
+				Fragment{Bytes: []byte{'a', '\n'}},
+				Fragment{Bytes: []byte{'b', '\n'}},
+				Fragment{Bytes: []byte{'c', '\n'}},
 			},
 		},
 	})
@@ -94,8 +97,8 @@ a
 b`,
 		Want: Document{
 			Parts: []Fragment{
-				[]byte{'f', ' ', '-', '-', '-', '\n', 'a', '\n'},
-				[]byte{'b'},
+				Fragment{Bytes: []byte{'f', ' ', '-', '-', '-', '\n', 'a', '\n'}},
+				Fragment{Bytes: []byte{'b'}},
 			},
 		},
 	})
