@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"io"
+	"os"
 	"regexp"
 )
 
@@ -59,4 +60,16 @@ func ReadDocument(in io.Reader) (*Document, error) {
 	}
 
 	return &doc, nil
+}
+
+// ReadFile reads a Document from the given file path.
+func ReadFile(name string) (*Document, error) {
+	fh, err := os.OpenFile(name, os.O_RDONLY, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	defer fh.Close()
+
+	return ReadDocument(fh)
 }
