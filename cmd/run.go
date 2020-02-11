@@ -1,9 +1,11 @@
 package cmd
 
 import (
+	"fmt"
 	"log"
 
 	"github.com/jpeach/modden/pkg/doc"
+	"github.com/jpeach/modden/pkg/driver"
 	"github.com/spf13/cobra"
 )
 
@@ -18,11 +20,19 @@ Cobra is a CLI library for Go that empowers applications.
 This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		kube, err := driver.NewKubeClient()
+		if err != nil {
+			return fmt.Errorf("failed to initialize Kubernetes context: %s", err)
+		}
+
 		for _, a := range args {
 			testDoc, err := doc.ReadFile(a)
 			if err != nil {
 				return err
 			}
+
+			driver.NewEnvironment()
+			driver.NewObjectDriver(kube)
 
 			log.Printf("read document with %d parts from %s",
 				len(testDoc.Parts), a)
