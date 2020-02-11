@@ -2,7 +2,7 @@ RM_F := rm -rf
 GO := go
 GIT := git
 
-Additional_Linters := misspell,nakedret
+Additional_Linters := misspell,nakedret,goimports,misspell,unparam,unconvert,bodyclose,govet
 
 export GO111MODULE=on
 
@@ -40,7 +40,9 @@ check-lint: ## Run linters
 		--workdir /app \
 		--env GO111MODULE \
 		golangci/golangci-lint:v1.21.0 \
-		golangci-lint --enable $(Additional_Linters) run
+		golangci-lint run \
+			--timeout 10m \
+			--enable $(Additional_Linters)
 
 .PHONY: clean
 clean: ## Remove output files
