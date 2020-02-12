@@ -5,6 +5,7 @@ import (
 	"log"
 
 	"k8s.io/client-go/discovery"
+	"k8s.io/client-go/kubernetes/scheme"
 
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
@@ -12,7 +13,6 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime"
 
 	"k8s.io/client-go/discovery/cached/memory"
 	"k8s.io/client-go/dynamic"
@@ -137,22 +137,17 @@ func NewKubeClient() (*KubeClient, error) {
 // NewNamespace returns a v1/Namespace object named by nsName and
 // converted to an unstructured.Unstructured object.
 func NewNamespace(nsName string) *unstructured.Unstructured {
-	ns := v1.Namespace{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "v1",
-			Kind:       "Namespace",
-		},
+	ns := &v1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: nsName,
 		},
 	}
 
-	objval, err := runtime.DefaultUnstructuredConverter.ToUnstructured(&ns)
-	if err != nil {
-		log.Fatalf("%s", err) // FIXME(jpeach)
+	u := &unstructured.Unstructured{}
+
+	if err := scheme.Scheme.Convert(ns, u, nil); err != nil {
+		log.Fatalf("namespace conversion failed: %s", err)
 	}
 
-	return &unstructured.Unstructured{
-		Object: objval,
-	}
+	return u
 }

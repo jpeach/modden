@@ -9,6 +9,7 @@ require (
 	github.com/open-policy-agent/opa v0.15.0
 	github.com/pkg/errors v0.8.1 // indirect
 	github.com/spf13/cobra v0.0.5
+	github.com/stretchr/testify v1.4.0
 	k8s.io/api v0.18.0-alpha.2
 	k8s.io/apimachinery v0.18.0-alpha.2
 	k8s.io/client-go v0.18.0-alpha.2
