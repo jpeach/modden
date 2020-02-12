@@ -18,6 +18,11 @@ for dealing with YAML and generic Kubernetes objects
     - Patch existing objects.
     - Delete objects (by name or labels).
 
+- Logging
+    - Global logging wrappers package
+    - Log messages implicitly attached to current test step
+    - Adjustable log level
+
 # References
 
 - https://github.com/kubernetes/community/blob/master/contributors/devel/sig-api-machinery/strategic-merge-patch.md
