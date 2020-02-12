@@ -104,6 +104,7 @@ to quickly create a Cobra application.`,
 
 			err = executeDocument(kube, testDoc)
 			if err != nil {
+				return fmt.Errorf("document execution failed: %s", err)
 			}
 		}
 
