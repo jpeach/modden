@@ -73,55 +73,43 @@ func executeDocument(kube *driver.KubeClient, testDoc *doc.Document) error {
 	return nil
 }
 
-// runCmd represents the run command
-var runCmd = &cobra.Command{
-	Use:   "run",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
+// NewRunCommand returns a command ro run a test case.
+func NewRunCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "run",
+		Short: "A brief description of your command",
+		Long: `A longer description that spans multiple lines and likely contains examples
 and usage of using your command. For example:
 
 Cobra is a CLI library for Go that empowers applications.
 This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
-	SilenceUsage: true,
-	RunE: func(cmd *cobra.Command, args []string) error {
-		kube, err := driver.NewKubeClient()
-		if err != nil {
-			return fmt.Errorf("failed to initialize Kubernetes context: %s", err)
-		}
-
-		// TODO(jpeach): set user agent from program version.
-		kube.SetUserAgent("modden/TODO")
-
-		for _, a := range args {
-			testDoc, err := doc.ReadFile(a)
+		SilenceUsage: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			kube, err := driver.NewKubeClient()
 			if err != nil {
-				return err
+				return fmt.Errorf("failed to initialize Kubernetes context: %s", err)
 			}
 
-			log.Printf("read document with %d parts from %s",
-				len(testDoc.Parts), a)
+			// TODO(jpeach): set user agent from program version.
+			kube.SetUserAgent("modden/TODO")
 
-			err = executeDocument(kube, testDoc)
-			if err != nil {
-				return fmt.Errorf("document execution failed: %s", err)
+			for _, a := range args {
+				testDoc, err := doc.ReadFile(a)
+				if err != nil {
+					return err
+				}
+
+				log.Printf("read document with %d parts from %s",
+					len(testDoc.Parts), a)
+
+				err = executeDocument(kube, testDoc)
+				if err != nil {
+					return fmt.Errorf("document execution failed: %s", err)
+				}
 			}
-		}
 
-		return nil
-	},
-}
-
-func init() {
-	rootCmd.AddCommand(runCmd)
-
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// runCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// runCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+			return nil
+		},
+	}
 }

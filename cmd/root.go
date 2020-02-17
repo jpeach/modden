@@ -1,32 +1,35 @@
 package cmd
 
 import (
-	"fmt"
-	"os"
-
 	"github.com/spf13/cobra"
 )
 
-// rootCmd represents the base command when called without any subcommands
-var rootCmd = &cobra.Command{
-	Use:   "modden",
-	Short: "A brief description of your application",
-	Long: `A longer description that spans multiple lines and likely contains
+const (
+	// EX_FAIL is an exit code indicating an unspecified error.
+	EX_FAIL = 1
+	// EX_USAGE is an exit code indicating invalid invocation syntax.
+	EX_USAGE = 65
+	// EX_NOINPUT is an exit code indicating missing input data.
+	EX_NOINPUT = 66
+)
+
+// NewRootCommand represents the base command when called without any subcommands
+func NewRootCommand() *cobra.Command {
+	root := &cobra.Command{
+		Use:   "modden",
+		Short: "A brief description of your application",
+		Long: `A longer description that spans multiple lines and likely contains
 examples and usage of using your application. For example:
 
 Cobra is a CLI library for Go that empowers applications.
 This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
-	// Uncomment the following line if your bare application
-	// has an action associated with it:
-	//	Run: func(cmd *cobra.Command, args []string) { },
-}
-
-// Execute adds all child commands to the root command and sets flags appropriately.
-// This is called by main.main(). It only needs to happen once to the rootCmd.
-func Execute() {
-	if err := rootCmd.Execute(); err != nil {
-		fmt.Println(err)
-		os.Exit(1)
+		// Uncomment the following line if your bare application
+		// has an action associated with it:
+		//	Run: func(cmd *cobra.Command, args []string) { },
 	}
+
+	root.AddCommand(NewRunCommand())
+
+	return root
 }
