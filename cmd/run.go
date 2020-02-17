@@ -9,61 +9,90 @@ import (
 	"github.com/spf13/cobra"
 )
 
+type runner struct {
+	Kube *driver.KubeClient
+	Env  driver.Environment
+	Obj  driver.ObjectDriver
+}
+
+func executeObjectFragment(r *runner, f *doc.Fragment) error {
+	obj, err := r.Env.HydrateObject(f.Bytes)
+	if err != nil {
+		// TODO(jpeach): attach error to
+		// step. This is a fatal error, so we
+		// can't continue test execution.
+		return fmt.Errorf("failed to hydrate object: %s", err)
+	}
+
+	// Implicitly create the object namespace to reduce test document boilerplate.
+	if nsName := obj.GetNamespace(); nsName != "" {
+		exists, err := r.Kube.NamespaceExists(nsName)
+		if err != nil {
+			return fmt.Errorf("failed check for namespace '%s': %s",
+				nsName, err)
+		}
+
+		if !exists {
+			nsObject := driver.NewNamespace(nsName)
+
+			// TODO(jpeach): hydrate this object as if it was from YAML.
+
+			// Apply the implicit namespace,
+			// failing the test step if it errors.
+			// Since we are creating the namespace
+			// implicitly, we know to expect that
+			// the creating should succeed.
+			if err := r.Obj.Apply(nsObject); err != nil {
+				return fmt.Errorf("failed to create implicit namespace %q: %s",
+					nsName, err)
+			}
+		}
+	}
+
+	// TODO(jpeach): We don't know whether this
+	// object should fail or not. There are test
+	// approaches where we expect that it should
+	// fail (e.g API server validation).
+	if err := r.Obj.Apply(obj); err != nil {
+		return fmt.Errorf("failed to apply object: %s", err)
+	}
+
+	return nil
+}
+
+func executeRegoFragment(r *runner, f *doc.Fragment) error {
+	return nil
+}
+
 func executeDocument(kube *driver.KubeClient, testDoc *doc.Document) error {
 	// TODO(jpeach): move document execution to a new package. Break it down.
 
-	env := driver.NewEnvironment()
-	objDriver := driver.NewObjectDriver(kube)
+	r := runner{}
+
+	r.Kube = kube
+	r.Env = driver.NewEnvironment()
+	r.Obj = driver.NewObjectDriver(kube)
 
 	for i, p := range testDoc.Parts {
 		// TODO(jpeach): this is a step, record actions, errors, results.
 
 		switch p.Decode() {
 		case doc.FragmentTypeObject:
-			log.Printf("applying YAML fragment %d", i)
-			obj, err := env.HydrateObject(p.Bytes)
-			if err != nil {
-				// TODO(jpeach): attach error to
-				// step. This is a fatal error, so we
-				// can't continue test execution.
-				return fmt.Errorf("failed to hydrate object: %s", err)
-			}
+			log.Printf("applying Kubernetes object fragment %d", i)
 
-			// Implicitly create the object namespace to reduce test document boilerplate.
-			if nsName := obj.GetNamespace(); nsName != "" {
-				exists, err := kube.NamespaceExists(nsName)
-				if err != nil {
-					return fmt.Errorf("failed check for namespace '%s': %s",
-						nsName, err)
-				}
-
-				if !exists {
-					nsObject := driver.NewNamespace(nsName)
-
-					// TODO(jpeach): hydrate this object as if it was from YAML.
-
-					// Apply the implicit namespace,
-					// failing the test step if it errors.
-					// Since we are creating the namespace
-					// implicitly, we know to expect that
-					// the creating should succeed.
-					if err := objDriver.Apply(nsObject); err != nil {
-						return fmt.Errorf("failed to create implicit namespace %q: %s",
-							nsName, err)
-					}
-				}
-			}
-
-			// TODO(jpeach): We don't know whether this
-			// object should fail or not. There are test
-			// approaches where we expect that it should
-			// fail (e.g API server validation).
-			if err := objDriver.Apply(obj); err != nil {
-				return fmt.Errorf("failed to apply object: %s", err)
+			if err := executeObjectFragment(&r, &p); err != nil {
+				// TODO(jpeach): this should be treated as a fatal test error.
+				return err
 			}
 
 		case doc.FragmentTypeRego:
 			log.Printf("executing Rego fragment %d", i)
+
+			if err := executeRegoFragment(&r, &p); err != nil {
+				// TODO(jpeach): this should be treated as a fatal test error.
+				return err
+			}
+
 		default:
 			log.Printf("ignoring unknown fragment %d", i)
 		}
