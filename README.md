@@ -30,6 +30,9 @@ for dealing with YAML and generic Kubernetes objects
     - [ ] Inspect responses with Rego expressions.
     - [ ] Use Rego query watcher API to deal with timing of responses
 
+- Quality of implementation
+    - [ ] Document fragment line numbers for error reporting
+
 # Notes
 
 **Query watching.** We can often observe the results of changing a

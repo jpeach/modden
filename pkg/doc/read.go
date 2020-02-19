@@ -52,6 +52,7 @@ func ReadDocument(in io.Reader) (*Document, error) {
 	scanner.Split(splitDocuments)
 
 	for scanner.Scan() {
+		// TODO(jpeach): Capture start and end line numbers for the fragment.
 		doc.Parts = append(doc.Parts, Fragment{Bytes: scanner.Bytes()})
 	}
 
