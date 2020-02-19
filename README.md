@@ -32,6 +32,8 @@ for dealing with YAML and generic Kubernetes objects
 
 - Quality of implementation
     - [ ] Document fragment line numbers for error reporting
+    - [ ] CLI errors bubbled up from cobra should be "$PROGNAME: blah"
+    - [ ] colorize errors and so forth
 
 # Notes
 
