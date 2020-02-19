@@ -6,6 +6,7 @@ import (
 
 	"github.com/jpeach/modden/pkg/doc"
 	"github.com/jpeach/modden/pkg/driver"
+	"github.com/open-policy-agent/opa/ast"
 	"github.com/spf13/cobra"
 )
 
@@ -76,7 +77,7 @@ func executeDocument(kube *driver.KubeClient, testDoc *doc.Document) error {
 	for i, p := range testDoc.Parts {
 		// TODO(jpeach): this is a step, record actions, errors, results.
 
-		switch p.Decode() {
+		switch p.Type {
 		case doc.FragmentTypeObject:
 			log.Printf("applying Kubernetes object fragment %d", i)
 
@@ -93,8 +94,14 @@ func executeDocument(kube *driver.KubeClient, testDoc *doc.Document) error {
 				return err
 			}
 
-		default:
+		case doc.FragmentTypeUnknown:
 			log.Printf("ignoring unknown fragment %d", i)
+
+		case doc.FragmentTypeInvalid:
+			// XXX(jpeach): We can't get here because
+			// fragments never store an invalid type. Any
+			// invalid fragments should already have been
+			// fatally handled.
 		}
 	}
 
@@ -131,6 +138,29 @@ to quickly create a Cobra application.`,
 
 				log.Printf("read document with %d parts from %s",
 					len(testDoc.Parts), a)
+
+				// Before executing anything, verify that we can decode all the
+				// fragments and raise any syntax errors.
+				for i, p := range testDoc.Parts {
+					fragType, err := p.Decode()
+					if err == nil {
+						continue
+					}
+
+					log.Printf("error on %s fragment %d: %s", fragType, i, err)
+
+					// If we have a compile error, puke it.
+					if err := doc.AsRegoCompilationErr(err); err != nil {
+						// TODO(jpeach): rewrite the location
+						// of the Rego error. The line number
+						// will be relative to the start of the
+						// fragment, and we should make it
+						// relative to the start of the document.
+						return err
+					}
+
+					return err
+				}
 
 				err = executeDocument(kube, testDoc)
 				if err != nil {

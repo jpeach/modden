@@ -3,7 +3,7 @@ package doc
 import (
 	"testing"
 
-	"github.com/google/go-cmp/cmp"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestParseFragment(t *testing.T) {
@@ -21,19 +21,25 @@ func TestParseFragment(t *testing.T) {
 				Bytes: []byte(tc.Data),
 			}
 
-			fragType := f.Decode()
+			fragType, err := f.Decode()
 
-			if diff := cmp.Diff(tc.Want, fragType); diff != "" {
-				t.Errorf(diff)
+			assert.Equal(t, tc.Want, fragType)
+
+			// Errors must mart the fragment invalid.
+			switch fragType {
+			case FragmentTypeInvalid:
+				assert.Error(t, err)
+			default:
+				assert.NoError(t, err)
 			}
 
 			switch fragType {
-			case FragmentTypeUnknown:
+			case FragmentTypeUnknown, FragmentTypeInvalid:
 				if f.Object() != nil {
-					t.Errorf("non-nil object for unknown fragment")
+					t.Errorf("non-nil object for unknown/invalid fragment")
 				}
 				if f.Rego() != nil {
-					t.Errorf("non-nil module for unknown fragment")
+					t.Errorf("non-nil module for unknown/invalid fragment")
 				}
 			case FragmentTypeObject:
 				if f.Object() == nil {
@@ -62,12 +68,12 @@ func TestParseFragment(t *testing.T) {
 
 	run(t, "non-object JSON", testcase{
 		Data: `{ "foo": "bar"}`,
-		Want: FragmentTypeUnknown,
+		Want: FragmentTypeInvalid,
 	})
 
 	run(t, "non-object YAML", testcase{
 		Data: `foo: "bar"`,
-		Want: FragmentTypeUnknown,
+		Want: FragmentTypeInvalid,
 	})
 
 	run(t, "YAML K8s object", testcase{
@@ -108,10 +114,4 @@ metadata:
 		Data: `t { x := 42; y := 41; x > y }`,
 		Want: FragmentTypeRego,
 	})
-
-	run(t, "Rego module", testcase{
-		Data: ` t { x := 42; y := 41; x > y } `,
-		Want: FragmentTypeRego,
-	})
-
 }
