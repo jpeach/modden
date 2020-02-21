@@ -125,12 +125,15 @@ func regoModuleCompile(m *ast.Module) error {
 
 func decodeModule(data []byte) (*ast.Module, error) {
 	// Rego requires a package name to generate any Rules.
-	// For now, we force a "main" package since fragments
-	// are anonymous.
-	mod := "package main\n" + string(data)
+	// Force a package name that is unique to the fragment.
+	moduleName := utils.RandomStringN(12)
 
-	m, err := ast.ParseModule("main", mod)
+	m, err := ast.ParseModule("main",
+		fmt.Sprintf("package %s\n%s", moduleName, string(data)))
 	if err != nil {
+		// XXX(jpeach): if the parse fails, then we will think that
+		// this fragment isn't Rego. But it could just be broken
+		// Rego, in which case we ought to show a syntax error.
 		return nil, err
 	}
 
@@ -140,6 +143,16 @@ func decodeModule(data []byte) (*ast.Module, error) {
 	}
 
 	return m, nil
+}
+
+// IsDecoded returns whether this fragment has been decoded to a known fragment type.
+func (f *Fragment) IsDecoded() bool {
+	switch f.Type {
+	case FragmentTypeInvalid, FragmentTypeUnknown:
+		return false
+	default:
+		return true
+	}
 }
 
 // Decode attempts to parse the Fragment.
@@ -160,14 +173,12 @@ func (f *Fragment) Decode() (FragmentType, error) {
 	}
 
 	if m, err := decodeModule(f.Bytes); err == nil {
-		// Rego will parse raw JSON and YAML, but in that case there
-		// won't be a any rules in the module.
-		if m.Rules != nil && len(m.Rules) > 0 {
-			f.Type = FragmentTypeRego
-			f.module = m
-
-			err = regoModuleCompile(m)
-			if err != nil {
+		// Rego will parse raw JSON and YAML, but in that
+		// case there won't be a any rules in the module.
+		if len(m.Rules) > 0 {
+			// Compile the fragment so that we can
+			// report syntax errors to the caller early.
+			if err := regoModuleCompile(m); err != nil {
 				return FragmentTypeInvalid,
 					utils.ChainErrors(
 						&InvalidFragmentErr{Type: FragmentTypeRego},
@@ -175,9 +186,10 @@ func (f *Fragment) Decode() (FragmentType, error) {
 					)
 			}
 
+			f.Type = FragmentTypeRego
+			f.module = m
 			return f.Type, nil
 		}
-
 	}
 
 	return FragmentTypeUnknown, nil
