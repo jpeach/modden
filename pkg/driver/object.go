@@ -12,7 +12,7 @@ import (
 // of Kubernetes API documents, expressed as unstructured.Unstructured
 // objects.
 type ObjectDriver interface {
-	// Apply creates or updates the specified object.
+	// Eval creates or updates the specified object.
 	Apply(*unstructured.Unstructured) error
 
 	// Delete deleted the specified object.

@@ -6,7 +6,6 @@ import (
 
 	"github.com/jpeach/modden/pkg/doc"
 	"github.com/jpeach/modden/pkg/driver"
-	"github.com/open-policy-agent/opa/ast"
 	"github.com/spf13/cobra"
 )
 
@@ -14,6 +13,7 @@ type runner struct {
 	Kube *driver.KubeClient
 	Env  driver.Environment
 	Obj  driver.ObjectDriver
+	Rego driver.CheckDriver
 }
 
 func executeObjectFragment(r *runner, f *doc.Fragment) error {
@@ -38,7 +38,7 @@ func executeObjectFragment(r *runner, f *doc.Fragment) error {
 
 			// TODO(jpeach): hydrate this object as if it was from YAML.
 
-			// Apply the implicit namespace,
+			// Eval the implicit namespace,
 			// failing the test step if it errors.
 			// Since we are creating the namespace
 			// implicitly, we know to expect that
@@ -55,27 +55,45 @@ func executeObjectFragment(r *runner, f *doc.Fragment) error {
 	// approaches where we expect that it should
 	// fail (e.g API server validation).
 	if err := r.Obj.Apply(obj); err != nil {
-		return fmt.Errorf("failed to apply object: %s", err)
+		// TODO(jpeach): store the apply result in the object driver
+		log.Printf("failed to apply object: %s", err)
 	}
+
+	// TODO(jpeach): If the object has a check directly attached on the $check
+	// pseudo-element, run it how. Otherwise, run the default one from assets.
 
 	return nil
 }
 
 func executeRegoFragment(r *runner, f *doc.Fragment) error {
-	return nil
+	resultSet, err := r.Rego.Eval(f.Rego())
+	if err != nil {
+		return err
+	}
+
+	for _, r := range resultSet {
+		// TODO(jpeach): convert to test result and propagate.
+		log.Printf("%s: %s", r.Severity, r.Message)
+	}
+
+	return err
 }
 
 func executeDocument(kube *driver.KubeClient, testDoc *doc.Document) error {
+	r := runner{
+		Kube: kube,
+		Env:  driver.NewEnvironment(),
+		Obj:  driver.NewObjectDriver(kube),
+		Rego: driver.NewRegoDriver(),
+	}
+
 	// TODO(jpeach): move document execution to a new package. Break it down.
-
-	r := runner{}
-
-	r.Kube = kube
-	r.Env = driver.NewEnvironment()
-	r.Obj = driver.NewObjectDriver(kube)
 
 	for i, p := range testDoc.Parts {
 		// TODO(jpeach): this is a step, record actions, errors, results.
+
+		// TODO(jpeach): update runner.Rego.Store() with the current state
+		// from the object driver.
 
 		switch p.Type {
 		case doc.FragmentTypeObject:
@@ -136,14 +154,17 @@ to quickly create a Cobra application.`,
 					return err
 				}
 
-				log.Printf("read document with %d parts from %s",
+				log.Printf("reading document with %d parts from %s",
 					len(testDoc.Parts), a)
 
 				// Before executing anything, verify that we can decode all the
 				// fragments and raise any syntax errors.
-				for i, p := range testDoc.Parts {
+				for i := range testDoc.Parts {
+					p := &testDoc.Parts[i]
+
 					fragType, err := p.Decode()
 					if err == nil {
+						log.Printf("decoded fragment %d as %s", i, fragType)
 						continue
 					}
 
