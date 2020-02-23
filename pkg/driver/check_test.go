@@ -105,6 +105,7 @@ error[num] { num := sites[_].count }
 
 	require.NoError(t, err)
 
-	// We expect no results because the type of the result will be []int, which is not supported.
+	// We expect no results because the type of the result will
+	// be []int, which is not supported.
 	assert.ElementsMatch(t, []CheckResult{}, results)
 }

@@ -78,13 +78,14 @@ func (r *regoDriver) Eval(m *ast.Module) ([]CheckResult, error) {
 		// context so names resolve correctly.
 		pkg := strings.TrimPrefix(m.Package.Path.String(), "data.")
 
-		log.Printf("evaluating %q with package %q", name, pkg)
+		log.Printf("evaluating query %q with package %q",
+			queryForRuleName(name), pkg)
 
 		r := rego.New(
 			// Scope the query to the current module package.
 			rego.Package(pkg),
 			// Query for the result of this named rule.
-			rego.Query(name),
+			rego.Query(queryForRuleName(name)),
 			rego.Compiler(c),
 			rego.ParsedModule(m),
 			rego.Store(r.Store()),
@@ -105,7 +106,7 @@ func (r *regoDriver) Eval(m *ast.Module) ([]CheckResult, error) {
 				for _, m := range findResultMessage(e) {
 					checkResults = append(checkResults,
 						CheckResult{
-							Severity: severityForQueryName(e.Text),
+							Severity: severityForRuleName(e.Text),
 							Message:  fmt.Sprint(m),
 						})
 				}
@@ -114,50 +115,6 @@ func (r *regoDriver) Eval(m *ast.Module) ([]CheckResult, error) {
 	}
 
 	return checkResults, nil
-}
-
-func severityForQueryName(name string) Severity {
-	// TODO(jpeach): these are negative rule names (i.e a test
-	// passes if they are always false). We can add positive rule
-	// names to make it easier to express conditions that have to
-	// be true (e.g "check", "require", "assert".
-	switch {
-	case name == "warn" || strings.HasPrefix(name, "warn_"):
-		return SeverityWarn
-	case name == "warning" || strings.HasPrefix(name, "warning_"):
-		return SeverityWarn
-	case name == "error" || strings.HasPrefix(name, "error_"):
-		return SeverityError
-	case name == "fatal" || strings.HasPrefix(name, "fatal_"):
-		return SeverityFatal
-	default:
-		return SeverityNone
-	}
-}
-
-// findAssertionRules searches the module for rules that match a test assertion severity.
-func findAssertionRules(m *ast.Module) []string {
-	// The rule names we match in a hash because the same rule
-	// name can appear more than once in a policy document.
-	found := map[string]struct{}{}
-
-	for _, rule := range m.Rules {
-		name := rule.Head.Name.String()
-
-		if severityForQueryName(name) == SeverityNone {
-			continue
-		}
-
-		found[name] = struct{}{}
-	}
-
-	// Flatten query names back into the slice.
-	result := make([]string, 0, len(found))
-	for k := range found {
-		result = append(result, k)
-	}
-
-	return result
 }
 
 // findResultMessage examines a rego.ExpressionValue to find the result
