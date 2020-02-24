@@ -36,10 +36,11 @@ type CheckResult struct {
 
 // CheckDriver is a driver for running Rego policy checks.
 type CheckDriver interface {
-	// Store returns a pointer to the driver's Rego data store.
-	Store() storage.Store
 	// Eval evaluates the given module and returns and check results.
 	Eval(*ast.Module) ([]CheckResult, error)
+
+	// StoreItem stores the value at the given Rego store path.
+	StoreItem(string, interface{}) error
 }
 
 // NewRegoDriver creates a new CheckDriver that evaluates checks
@@ -58,8 +59,31 @@ type regoDriver struct {
 	store storage.Store
 }
 
-func (r *regoDriver) Store() storage.Store {
-	return r.store
+// StoreItem stores the value at the given Rego store path.
+func (r *regoDriver) StoreItem(where string, what interface{}) error {
+	ctx := context.Background()
+	path := storage.MustParsePath(where)
+
+	txn, err := r.store.NewTransaction(ctx, storage.WriteParams)
+	if err != nil {
+		return err
+	}
+
+	err = r.store.Write(ctx, txn, storage.ReplaceOp, path, what)
+	if storage.IsNotFound(err) {
+		err = r.store.Write(ctx, txn, storage.AddOp, path, what)
+	}
+
+	if err != nil {
+		r.store.Abort(ctx, txn)
+		return err
+	}
+
+	if err := r.store.Commit(ctx, txn); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // Eval evaluates checks in the given module.
@@ -88,7 +112,7 @@ func (r *regoDriver) Eval(m *ast.Module) ([]CheckResult, error) {
 			rego.Query(queryForRuleName(name)),
 			rego.Compiler(c),
 			rego.ParsedModule(m),
-			rego.Store(r.Store()),
+			rego.Store(r.store),
 
 			// TODO(jpeach): if tracing is configured, add rego.Tracer().
 		)

@@ -18,6 +18,11 @@ type Runner struct {
 
 // Run executes a test document.
 func (r *Runner) Run(testDoc *doc.Document) error {
+	// Initialize the Rego store.
+	if err := r.Rego.StoreItem("/", skel()); err != nil {
+		return err
+	}
+
 	for i, p := range testDoc.Parts {
 		// TODO(jpeach): this is a step, record actions, errors, results.
 
@@ -28,10 +33,20 @@ func (r *Runner) Run(testDoc *doc.Document) error {
 		case doc.FragmentTypeObject:
 			log.Printf("applying Kubernetes object fragment %d", i)
 
-			if err := executeObjectFragment(r, &p); err != nil {
+			result, err := executeObjectFragment(r, &p)
+			if err != nil {
 				// TODO(jpeach): this should be treated as a fatal test error.
+				log.Printf("unable to apply object update: %s", err)
 				return err
 			}
+
+			err = r.Rego.StoreItem("/resources/applied/last", result)
+			if err != nil {
+				return err
+			}
+
+			// TODO(jpeach): If the object has a check directly attached on the $check
+			// pseudo-element, run it how. Otherwise, run the default one from assets.
 
 		case doc.FragmentTypeRego:
 			log.Printf("executing Rego fragment %d", i)
@@ -56,21 +71,21 @@ func (r *Runner) Run(testDoc *doc.Document) error {
 	return nil
 }
 
-func executeObjectFragment(r *Runner, f *doc.Fragment) error {
+func executeObjectFragment(r *Runner, f *doc.Fragment) (*driver.OperationResult, error) {
 	obj, err := r.Env.HydrateObject(f.Bytes)
 	if err != nil {
 		// TODO(jpeach): attach error to
 		// step. This is a fatal error, so we
 		// can't continue test execution.
-		return fmt.Errorf("failed to hydrate object: %s", err)
+		return nil, fmt.Errorf("failed to hydrate object: %s", err)
 	}
 
 	// Implicitly create the object namespace to reduce test document boilerplate.
 	if nsName := obj.GetNamespace(); nsName != "" {
 		exists, err := r.Kube.NamespaceExists(nsName)
 		if err != nil {
-			return fmt.Errorf("failed check for namespace '%s': %s",
-				nsName, err)
+			return nil, fmt.Errorf(
+				"failed check for namespace '%s': %s", nsName, err)
 		}
 
 		if !exists {
@@ -83,26 +98,19 @@ func executeObjectFragment(r *Runner, f *doc.Fragment) error {
 			// Since we are creating the namespace
 			// implicitly, we know to expect that
 			// the creating should succeed.
-			if err := r.Obj.Apply(nsObject); err != nil {
-				return fmt.Errorf("failed to create implicit namespace %q: %s",
-					nsName, err)
+			result, err := r.Obj.Apply(nsObject)
+			if err != nil {
+				return nil, fmt.Errorf(
+					"failed to create implicit namespace %q: %w", nsName, err)
+			}
+
+			if !result.Succeeded() {
+				return result, nil
 			}
 		}
 	}
 
-	// TODO(jpeach): We don't know whether this
-	// object should fail or not. There are test
-	// approaches where we expect that it should
-	// fail (e.g API server validation).
-	if err := r.Obj.Apply(obj); err != nil {
-		// TODO(jpeach): store the apply result in the object driver
-		log.Printf("failed to apply object: %s", err)
-	}
-
-	// TODO(jpeach): If the object has a check directly attached on the $check
-	// pseudo-element, run it how. Otherwise, run the default one from assets.
-
-	return nil
+	return r.Obj.Apply(obj)
 }
 
 func executeRegoFragment(r *Runner, f *doc.Fragment) error {
@@ -117,4 +125,15 @@ func executeRegoFragment(r *Runner, f *doc.Fragment) error {
 	}
 
 	return err
+}
+
+// skel returns a skeleton data structure used to initialize the
+// Rego store. We need to sketch out some initial nodes to have
+//places to store subsequent data items.
+func skel() interface{} {
+	return map[string]interface{}{
+		"resources": map[string]interface{}{
+			"applied": map[string]interface{}{},
+		},
+	}
 }

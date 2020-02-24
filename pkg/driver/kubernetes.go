@@ -151,3 +151,33 @@ func NewNamespace(nsName string) *unstructured.Unstructured {
 
 	return u
 }
+
+// ObjectReference uniquely identifies Kubernetes API object.
+type ObjectReference struct {
+	Name      string                  `json:"name"`
+	Namespace string                  `json:"namespace"`
+	Kind      schema.GroupVersionKind `json:"kind"`
+
+	Meta struct {
+		Group   string `json:"group"`
+		Version string `json:"version"`
+		Kind    string `json:"kind"`
+	} `json:"meta"`
+}
+
+// FromUnstructured initializes an ObjectReference from a
+// unstructured.Unstructured object.
+func (o *ObjectReference) FromUnstructured(u *unstructured.Unstructured) *ObjectReference {
+
+	o.Name = u.GetName()
+	o.Namespace = u.GetNamespace()
+
+	// We manually construct a GVK so that we can apply JSON
+	// field labels to lowercase the names in the Rego data store.
+	kind := u.GetObjectKind().GroupVersionKind()
+	o.Meta.Group = kind.Group
+	o.Meta.Version = kind.Version
+	o.Meta.Kind = kind.Kind
+
+	return o
+}
