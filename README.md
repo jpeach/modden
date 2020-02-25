@@ -47,6 +47,11 @@ result changes. Note that there is still an ordering problem to solve,
 since to avoid race conditions, we should start the watch before making
 a configuration change.
 
+**Document parsing.** It's pretty common that Rego doesn't parse or
+compile the first time. If that happens, we often report an unknown
+fragment type rather than an invalid Rego fragment. This has to be
+made more deterministic, because it makes the user experience suck.
+
 # References
 
 - https://github.com/kubernetes/community/blob/master/contributors/devel/sig-api-machinery/strategic-merge-patch.md
