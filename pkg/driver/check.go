@@ -3,6 +3,7 @@ package driver
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"strings"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/open-policy-agent/opa/rego"
 	"github.com/open-policy-agent/opa/storage"
 	"github.com/open-policy-agent/opa/storage/inmem"
+	"github.com/open-policy-agent/opa/topdown"
 )
 
 // Severity indicated the seriousness of a test failure.
@@ -34,10 +36,35 @@ type CheckResult struct {
 	Message  string
 }
 
+type CheckTracer interface {
+	topdown.Tracer
+	Write()
+}
+
+type defaultTracer struct {
+	*topdown.BufferTracer
+	writer io.Writer
+}
+
+func (d *defaultTracer) Write() {
+	topdown.PrettyTrace(d.writer, *d.BufferTracer)
+}
+
+var _ CheckTracer = &defaultTracer{}
+
+func NewCheckTracer(w io.Writer) CheckTracer {
+	return &defaultTracer{
+		BufferTracer: topdown.NewBufferTracer(),
+		writer:       w,
+	}
+}
+
 // CheckDriver is a driver for running Rego policy checks.
 type CheckDriver interface {
 	// Eval evaluates the given module and returns and check results.
 	Eval(*ast.Module, ...func(*rego.Rego)) ([]CheckResult, error)
+
+	Trace(CheckTracer)
 
 	// StoreItem stores the value at the given Rego store path.
 	StoreItem(string, interface{}) error
@@ -56,7 +83,12 @@ func NewRegoDriver() CheckDriver {
 var _ CheckDriver = &regoDriver{}
 
 type regoDriver struct {
-	store storage.Store
+	store  storage.Store
+	tracer CheckTracer
+}
+
+func (r *regoDriver) Trace(tracer CheckTracer) {
+	r.tracer = tracer
 }
 
 // StoreItem stores the value at the given Rego store path.
@@ -121,10 +153,18 @@ func (r *regoDriver) Eval(m *ast.Module, opts ...func(*rego.Rego)) ([]CheckResul
 			o(regoObj)
 		}
 
+		if r.tracer != nil {
+			rego.Tracer(r.tracer)(regoObj)
+		}
+
 		resultSet, err := regoObj.Eval(context.Background())
 		if err != nil {
 			// TODO(jpeach): propagate fatal error result.
 			return nil, err
+		}
+
+		if r.tracer != nil {
+			r.tracer.Write()
 		}
 
 		// In each result, the Text is the expression that we

@@ -8,8 +8,14 @@ import (
 	"github.com/jpeach/modden/pkg/doc"
 	"github.com/jpeach/modden/pkg/driver"
 	"github.com/open-policy-agent/opa/rego"
-	"github.com/open-policy-agent/opa/topdown"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+)
+
+type TraceFlag int
+
+const (
+	TraceNone TraceFlag = 0
+	TraceRego TraceFlag = 1 << iota
 )
 
 // Runner executes a test document with the help of a collection of drivers.
@@ -18,10 +24,16 @@ type Runner struct {
 	Env  driver.Environment
 	Obj  driver.ObjectDriver
 	Rego driver.CheckDriver
+
+	Trace TraceFlag
 }
 
 // Run executes a test document.
 func (r *Runner) Run(testDoc *doc.Document) error {
+	if (r.Trace & TraceRego) != 0 {
+		r.Rego.Trace(driver.NewCheckTracer(os.Stdout))
+	}
+
 	// Initialize the Rego store.
 	if err := r.Rego.StoreItem("/", skel()); err != nil {
 		return err
@@ -138,14 +150,10 @@ func applyObject(r *Runner, u *unstructured.Unstructured) (*driver.OperationResu
 }
 
 func runCheckWithInput(r *Runner, f *doc.Fragment, in interface{}) error {
-	traceBuf := topdown.NewBufferTracer()
-
-	resultSet, err := r.Rego.Eval(f.Rego(), rego.Input(in), rego.Tracer(traceBuf))
+	resultSet, err := r.Rego.Eval(f.Rego(), rego.Input(in))
 	if err != nil {
 		return err
 	}
-
-	topdown.PrettyTrace(os.Stderr, *traceBuf)
 
 	for _, r := range resultSet {
 		// TODO(jpeach): convert to test result and propagate.
