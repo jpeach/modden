@@ -1,0 +1,41 @@
+---
+apiVersion: projectcontour.io/v1
+kind: HTTPProxy
+metadata:
+  name: httpbin
+spec:
+  virtualhost:
+    fqdn: httpbin.test.projectcontour.io
+  routes:
+    - conditions:
+      - prefix: /
+      services:
+        - name: httpbin
+          port: 80
+          protocol: hogwash
+
+$check: |
+  fatal [msg] {
+    is_null(input.error)
+    msg := sprintf("successfully created %s/%s, expected any error", [
+      input.target.namespace, input.target.name])
+  }
+
+  error [msg] {
+    wanted := "Invalid"
+    input.error.reason != wanted
+    msg := sprintf("error reason is %s, wanted %s", [input.error.reason, wanted])
+   }
+
+  error [msg] {
+    wanted := "Failure"
+    input.error.status != wanted
+    msg := sprintf("error status is %s, wanted %s", [input.error.status, wanted])
+  }
+
+  error [msg] {
+    wanted := "FieldValueNotSupported"
+    cause := input.error.details.causes[0].reason
+    cause != wanted
+    msg := sprintf("error cause is %s, wanted %s", [cause, wanted])
+  }
