@@ -7,7 +7,9 @@ import (
 	"io"
 
 	"github.com/jpeach/modden/pkg/utils"
+
 	"github.com/open-policy-agent/opa/ast"
+
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/util/yaml"
 )
@@ -193,4 +195,21 @@ func (f *Fragment) Decode() (FragmentType, error) {
 	}
 
 	return FragmentTypeUnknown, nil
+}
+
+// NewRegoFragment decodes the given data and returns a new Fragment
+// of type FragmentTypeRego.
+func NewRegoFragment(data []byte) (*Fragment, error) {
+	frag := Fragment{Bytes: data}
+
+	fragType, err := frag.Decode()
+	if err != nil {
+		return nil, fmt.Errorf("%s: %s", err, AsRegoCompilationErr(err))
+	}
+
+	if fragType != FragmentTypeRego {
+		return nil, fmt.Errorf("unexpected fragment type %q", fragType)
+	}
+
+	return &frag, nil
 }

@@ -3,9 +3,13 @@ package test
 import (
 	"fmt"
 	"log"
+	"os"
 
 	"github.com/jpeach/modden/pkg/doc"
 	"github.com/jpeach/modden/pkg/driver"
+	"github.com/open-policy-agent/opa/rego"
+	"github.com/open-policy-agent/opa/topdown"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
 // Runner executes a test document with the help of a collection of drivers.
@@ -26,6 +30,10 @@ func (r *Runner) Run(testDoc *doc.Document) error {
 	for i, p := range testDoc.Parts {
 		// TODO(jpeach): this is a step, record actions, errors, results.
 
+		// TODO(jpeach): if there are any pending fatal
+		// actions, stop the test. Depending on config
+		// we may have to clean up.
+
 		// TODO(jpeach): update Runner.Rego.Store() with the current state
 		// from the object driver.
 
@@ -33,25 +41,49 @@ func (r *Runner) Run(testDoc *doc.Document) error {
 		case doc.FragmentTypeObject:
 			log.Printf("applying Kubernetes object fragment %d", i)
 
-			result, err := executeObjectFragment(r, &p)
+			obj, err := r.Env.HydrateObject(p.Bytes)
 			if err != nil {
-				// TODO(jpeach): this should be treated as a fatal test error.
-				log.Printf("unable to apply object update: %s", err)
-				return err
+				// TODO(jpeach): attach error to
+				// step. This is a fatal error, so we
+				// can't continue test execution.
+				return fmt.Errorf("failed to hydrate object: %s", err)
 			}
 
+			var result *driver.OperationResult
+
+			if obj.Delete {
+
+			} else {
+				result, err = applyObject(r, obj.Object)
+				if err != nil {
+					// TODO(jpeach): this should be treated as a fatal test error.
+					log.Printf("unable to apply object update: %s", err)
+					return err
+				}
+			}
+
+			// First, push the result into the store.
 			err = r.Rego.StoreItem("/resources/applied/last", result)
 			if err != nil {
 				return err
 			}
 
-			// TODO(jpeach): If the object has a check directly attached on the $check
-			// pseudo-element, run it how. Otherwise, run the default one from assets.
+			// Now, if this object has a specific check, run it. Otherwise, we can
+			if obj.Check != nil {
+				err = runCheckWithInput(r, obj.Check, result)
+			} else {
+				err = runCheckWithInput(r, DefaultObjectUpdateCheck(), result)
+			}
+
+			if err != nil {
+				// TODO(jpeach): this should be treated as a fatal test error.
+				log.Printf("%s", err)
+			}
 
 		case doc.FragmentTypeRego:
 			log.Printf("executing Rego fragment %d", i)
 
-			if err := executeRegoFragment(r, &p); err != nil {
+			if err := runCheck(r, &p); err != nil {
 				// TODO(jpeach): this should be treated as a fatal test error.
 				return err
 			}
@@ -71,17 +103,9 @@ func (r *Runner) Run(testDoc *doc.Document) error {
 	return nil
 }
 
-func executeObjectFragment(r *Runner, f *doc.Fragment) (*driver.OperationResult, error) {
-	obj, err := r.Env.HydrateObject(f.Bytes)
-	if err != nil {
-		// TODO(jpeach): attach error to
-		// step. This is a fatal error, so we
-		// can't continue test execution.
-		return nil, fmt.Errorf("failed to hydrate object: %s", err)
-	}
-
+func applyObject(r *Runner, u *unstructured.Unstructured) (*driver.OperationResult, error) {
 	// Implicitly create the object namespace to reduce test document boilerplate.
-	if nsName := obj.GetNamespace(); nsName != "" {
+	if nsName := u.GetNamespace(); nsName != "" {
 		exists, err := r.Kube.NamespaceExists(nsName)
 		if err != nil {
 			return nil, fmt.Errorf(
@@ -110,10 +134,28 @@ func executeObjectFragment(r *Runner, f *doc.Fragment) (*driver.OperationResult,
 		}
 	}
 
-	return r.Obj.Apply(obj)
+	return r.Obj.Apply(u)
 }
 
-func executeRegoFragment(r *Runner, f *doc.Fragment) error {
+func runCheckWithInput(r *Runner, f *doc.Fragment, in interface{}) error {
+	traceBuf := topdown.NewBufferTracer()
+
+	resultSet, err := r.Rego.Eval(f.Rego(), rego.Input(in), rego.Tracer(traceBuf))
+	if err != nil {
+		return err
+	}
+
+	topdown.PrettyTrace(os.Stderr, *traceBuf)
+
+	for _, r := range resultSet {
+		// TODO(jpeach): convert to test result and propagate.
+		log.Printf("%s: %s", r.Severity, r.Message)
+	}
+
+	return err
+}
+
+func runCheck(r *Runner, f *doc.Fragment) error {
 	resultSet, err := r.Rego.Eval(f.Rego())
 	if err != nil {
 		return err

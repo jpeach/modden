@@ -154,9 +154,8 @@ func NewNamespace(nsName string) *unstructured.Unstructured {
 
 // ObjectReference uniquely identifies Kubernetes API object.
 type ObjectReference struct {
-	Name      string                  `json:"name"`
-	Namespace string                  `json:"namespace"`
-	Kind      schema.GroupVersionKind `json:"kind"`
+	Name      string `json:"name"`
+	Namespace string `json:"namespace"`
 
 	Meta struct {
 		Group   string `json:"group"`

@@ -37,7 +37,7 @@ type CheckResult struct {
 // CheckDriver is a driver for running Rego policy checks.
 type CheckDriver interface {
 	// Eval evaluates the given module and returns and check results.
-	Eval(*ast.Module) ([]CheckResult, error)
+	Eval(*ast.Module, ...func(*rego.Rego)) ([]CheckResult, error)
 
 	// StoreItem stores the value at the given Rego store path.
 	StoreItem(string, interface{}) error
@@ -87,7 +87,7 @@ func (r *regoDriver) StoreItem(where string, what interface{}) error {
 }
 
 // Eval evaluates checks in the given module.
-func (r *regoDriver) Eval(m *ast.Module) ([]CheckResult, error) {
+func (r *regoDriver) Eval(m *ast.Module, opts ...func(*rego.Rego)) ([]CheckResult, error) {
 	c := ast.NewCompiler()
 
 	// Find the unique set of assertion rules to query.
@@ -105,7 +105,7 @@ func (r *regoDriver) Eval(m *ast.Module) ([]CheckResult, error) {
 		log.Printf("evaluating query %q with package %q",
 			queryForRuleName(name), pkg)
 
-		r := rego.New(
+		regoObj := rego.New(
 			// Scope the query to the current module package.
 			rego.Package(pkg),
 			// Query for the result of this named rule.
@@ -117,7 +117,11 @@ func (r *regoDriver) Eval(m *ast.Module) ([]CheckResult, error) {
 			// TODO(jpeach): if tracing is configured, add rego.Tracer().
 		)
 
-		resultSet, err := r.Eval(context.Background())
+		for _, o := range opts {
+			o(regoObj)
+		}
+
+		resultSet, err := regoObj.Eval(context.Background())
 		if err != nil {
 			// TODO(jpeach): propagate fatal error result.
 			return nil, err

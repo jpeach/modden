@@ -18,7 +18,11 @@ help:
 
 .PHONY: build
 build: ## Build
+build: pkg/builtin/assets.go
 	$(GO) build -o $(BIN) .
+
+pkg/builtin/assets.go: $(wildcard pkg/builtin/*.rego) $(wildcard pkg/builtin/*.yaml)
+	go run github.com/go-bindata/go-bindata/go-bindata -pkg builtin -o $@ $^
 
 .PHONY: check
 check: ## Run tests
@@ -47,6 +51,7 @@ check-lint: ## Run linters
 .PHONY: clean
 clean: ## Remove output files
 	$(RM_F) $(BIN) $(SRC)
+	$(RM_F) pkg/builtin/assets.go
 	$(GO) clean ./...
 
 .PHONY: archive
