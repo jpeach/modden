@@ -4,9 +4,12 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/jpeach/modden/pkg/must"
+
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/types"
 )
 
 type OperationResult struct {
@@ -84,10 +87,15 @@ func (o objectDriver) Apply(obj *unstructured.Unstructured) (*OperationResult, e
 	// If the create was against an object that already existed,
 	// retry as an update.
 	if apierrors.IsAlreadyExists(err) {
+		name := obj.GetName()
+		opt := metav1.PatchOptions{}
+		ptype := types.StrategicMergePatchType
+		data := must.Bytes(obj.MarshalJSON())
+
 		if isNamespaced {
-			latest, err = o.kube.Dynamic.Resource(gvr).Namespace(obj.GetNamespace()).Update(obj, metav1.UpdateOptions{})
+			latest, err = o.kube.Dynamic.Resource(gvr).Namespace(obj.GetNamespace()).Patch(name, ptype, data, opt)
 		} else {
-			latest, err = o.kube.Dynamic.Resource(gvr).Update(obj, metav1.UpdateOptions{})
+			latest, err = o.kube.Dynamic.Resource(gvr).Patch(name, ptype, data, opt)
 		}
 	}
 
