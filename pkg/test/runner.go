@@ -72,8 +72,16 @@ func (r *Runner) Run(testDoc *doc.Document) error {
 			}
 
 			// First, push the result into the store.
-			err = storeItem(r, "/resources/applied/last", result)
-			if err != nil {
+			if err := storeItem(r, "/resources/applied/last", result.Latest.Object); err != nil {
+				// TODO(jpeach): this should be treated as a fatal test error.
+				return err
+			}
+
+			// TODO(jpeach): create an array at `/resources/applied/log` and append this.
+
+			// Also push the result into the resources hierarchy.
+			if err := storeResource(r, result.Latest); err != nil {
+				// TODO(jpeach): this should be treated as a fatal test error.
 				return err
 			}
 
@@ -85,11 +93,6 @@ func (r *Runner) Run(testDoc *doc.Document) error {
 			}
 
 			if err != nil {
-				// TODO(jpeach): this should be treated as a fatal test error.
-				log.Printf("%s", err)
-			}
-
-			if err := storeResource(r, result.Latest); err != nil {
 				// TODO(jpeach): this should be treated as a fatal test error.
 				log.Printf("%s", err)
 			}
@@ -184,7 +187,6 @@ func runCheck(r *Runner, f *doc.Fragment) error {
 // that means that an intermediate path element doesn't exist. In that
 // case, we create the path and retry.
 func storeItem(r *Runner, where string, what interface{}) error {
-
 	err := r.Rego.StoreItem(where, what)
 	if storage.IsNotFound(err) {
 		err = r.Rego.StorePath(where)
@@ -220,5 +222,8 @@ func storeResource(r *Runner, u *unstructured.Unstructured) error {
 		resourcePath = path.Join("/", u.GetNamespace(), "resources", gvr.Resource, u.GetName())
 	}
 
-	return storeItem(r, resourcePath, u)
+	// NOTE(jpeach): we have to marshall the inner object into
+	// the store because we don't want the resource enclosed in
+	// a dictionary with the key "Object".
+	return storeItem(r, resourcePath, u.Object)
 }
