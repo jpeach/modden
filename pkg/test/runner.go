@@ -72,7 +72,8 @@ func (r *Runner) Run(testDoc *doc.Document) error {
 			}
 
 			// First, push the result into the store.
-			if err := storeItem(r, "/resources/applied/last", result.Latest.Object); err != nil {
+			if err := storeItem(r, "/resources/applied/last",
+				result.Latest.UnstructuredContent()); err != nil {
 				// TODO(jpeach): this should be treated as a fatal test error.
 				return err
 			}
@@ -225,5 +226,5 @@ func storeResource(r *Runner, u *unstructured.Unstructured) error {
 	// NOTE(jpeach): we have to marshall the inner object into
 	// the store because we don't want the resource enclosed in
 	// a dictionary with the key "Object".
-	return storeItem(r, resourcePath, u.Object)
+	return storeItem(r, resourcePath, u.UnstructuredContent())
 }
