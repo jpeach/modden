@@ -1,9 +1,12 @@
 package driver
 
 import (
+	"context"
 	"testing"
 
 	"github.com/open-policy-agent/opa/ast"
+	"github.com/open-policy-agent/opa/storage"
+	"github.com/open-policy-agent/opa/storage/inmem"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -108,4 +111,65 @@ error[num] { num := sites[_].count }
 	// We expect no results because the type of the result will
 	// be []int, which is not supported.
 	assert.ElementsMatch(t, []CheckResult{}, results)
+}
+
+func TestStorePathItem(t *testing.T) {
+	// Use the underlying Rego driver type so we can directly access the Store.
+	r := &regoDriver{
+		store: inmem.New(),
+	}
+
+	ctx := context.TODO()
+
+	// Creating the same path twice is not an error.
+	assert.NoError(t, r.StorePath("/test/path/one"))
+	assert.NoError(t, r.StorePath("/test/path/one"))
+
+	storedValue := map[string]interface{}{
+		"item": map[string]interface{}{
+			"first":  "one",
+			"second": "two",
+		},
+	}
+
+	read := func(where string) (interface{}, error) {
+		txn, err := r.store.NewTransaction(ctx)
+		require.NoError(t, err, "NewTransaction failed")
+		defer r.store.Abort(ctx, txn)
+
+		// Ensure that we can read it back.
+		return r.store.Read(ctx, txn, storage.MustParsePath(where))
+	}
+
+	// Store an item.
+	assert.NoError(t, r.StoreItem("/test/path/two", storedValue))
+
+	// Ensure that we can read it back.
+	val, err := read("/test/path/two")
+	require.NoError(t, err, "reading store path %q", "/test/path/two")
+	assert.Equal(t, storedValue, val)
+
+	// Now re-store the path.
+	assert.NoError(t, r.StorePath("/test/path/two"))
+
+	// Ensure that extending the path didn't nuke the value
+	val, err = read("/test/path/two")
+	require.NoError(t, err, "reading store path %q", "/test/path/two")
+	assert.Equal(t, storedValue, val)
+
+	updatedValue := map[string]interface{}{
+		"item": map[string]interface{}{
+			"first":  "one",
+			"second": "two",
+			"third":  map[string]interface{}{},
+		},
+	}
+
+	// Now store a path that traverses the existing item.
+	assert.NoError(t, r.StorePath("/test/path/two/item/third"))
+
+	// Ensure that extending the path didn't nuke the value, but created a new field.
+	val, err = read("/test/path/two")
+	require.NoError(t, err, "reading store path %q", "/test/path/two")
+	assert.Equal(t, updatedValue, val)
 }

@@ -66,8 +66,11 @@ type CheckDriver interface {
 
 	Trace(CheckTracer)
 
-	// StoreItem stores the value at the given Rego store path.
+	// StoreItem stores the value at the given path in the Rego data document.
 	StoreItem(string, interface{}) error
+
+	// StorePath creates the given path in the Rego data document.
+	StorePath(where string) error
 }
 
 // NewRegoDriver creates a new CheckDriver that evaluates checks
@@ -94,14 +97,11 @@ func (r *regoDriver) Trace(tracer CheckTracer) {
 // StoreItem stores the value at the given Rego store path.
 func (r *regoDriver) StoreItem(where string, what interface{}) error {
 	ctx := context.Background()
+	txn := storage.NewTransactionOrDie(ctx, r.store, storage.WriteParams)
+
 	path := storage.MustParsePath(where)
 
-	txn, err := r.store.NewTransaction(ctx, storage.WriteParams)
-	if err != nil {
-		return err
-	}
-
-	err = r.store.Write(ctx, txn, storage.ReplaceOp, path, what)
+	err := r.store.Write(ctx, txn, storage.ReplaceOp, path, what)
 	if storage.IsNotFound(err) {
 		err = r.store.Write(ctx, txn, storage.AddOp, path, what)
 	}
@@ -109,6 +109,42 @@ func (r *regoDriver) StoreItem(where string, what interface{}) error {
 	if err != nil {
 		r.store.Abort(ctx, txn)
 		return err
+	}
+
+	if err := r.store.Commit(ctx, txn); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// StorePath creates the given path in the Rego data document.
+func (r *regoDriver) StorePath(where string) error {
+	ctx := context.Background()
+	txn := storage.NewTransactionOrDie(ctx, r.store, storage.WriteParams)
+
+	var currentPath storage.Path
+
+	for _, p := range storage.MustParsePath(where) {
+		currentPath = append(currentPath, p)
+
+		_, err := r.store.Read(ctx, txn, currentPath)
+		switch {
+		case err == nil:
+			// If the read succeeded, there was an element.
+			continue
+		case storage.IsNotFound(err):
+			// If the path element isn't there, cover it with am empty node.
+			val := map[string]interface{}{}
+			if err := r.store.Write(ctx, txn, storage.AddOp, currentPath, val); err != nil {
+				r.store.Abort(ctx, txn)
+				return err
+			}
+		default:
+			// Any other error, abort and propagate it.
+			r.store.Abort(ctx, txn)
+			return err
+		}
 	}
 
 	if err := r.store.Commit(ctx, txn); err != nil {

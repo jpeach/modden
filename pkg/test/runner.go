@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path"
 
 	"github.com/jpeach/modden/pkg/doc"
 	"github.com/jpeach/modden/pkg/driver"
 	"github.com/open-policy-agent/opa/rego"
+	"github.com/open-policy-agent/opa/storage"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
@@ -32,11 +34,6 @@ type Runner struct {
 func (r *Runner) Run(testDoc *doc.Document) error {
 	if (r.Trace & TraceRego) != 0 {
 		r.Rego.Trace(driver.NewCheckTracer(os.Stdout))
-	}
-
-	// Initialize the Rego store.
-	if err := r.Rego.StoreItem("/", skel()); err != nil {
-		return err
 	}
 
 	for i, p := range testDoc.Parts {
@@ -75,7 +72,7 @@ func (r *Runner) Run(testDoc *doc.Document) error {
 			}
 
 			// First, push the result into the store.
-			err = r.Rego.StoreItem("/resources/applied/last", result)
+			err = storeItem(r, "/resources/applied/last", result)
 			if err != nil {
 				return err
 			}
@@ -88,6 +85,11 @@ func (r *Runner) Run(testDoc *doc.Document) error {
 			}
 
 			if err != nil {
+				// TODO(jpeach): this should be treated as a fatal test error.
+				log.Printf("%s", err)
+			}
+
+			if err := storeResource(r, result.Latest); err != nil {
 				// TODO(jpeach): this should be treated as a fatal test error.
 				log.Printf("%s", err)
 			}
@@ -177,13 +179,46 @@ func runCheck(r *Runner, f *doc.Fragment) error {
 	return err
 }
 
-// skel returns a skeleton data structure used to initialize the
-// Rego store. We need to sketch out some initial nodes to have
-//places to store subsequent data items.
-func skel() interface{} {
-	return map[string]interface{}{
-		"resources": map[string]interface{}{
-			"applied": map[string]interface{}{},
-		},
+// storeItem stores an arbitrary item at the given path in the Rego
+// data document. If we get a NotFound error when we store the resource,
+// that means that an intermediate path element doesn't exist. In that
+// case, we create the path and retry.
+func storeItem(r *Runner, where string, what interface{}) error {
+
+	err := r.Rego.StoreItem(where, what)
+	if storage.IsNotFound(err) {
+		err = r.Rego.StorePath(where)
+		if err != nil {
+			return err
+		}
+
+		err = r.Rego.StoreItem(where, what)
 	}
+
+	return err
+}
+
+// storeResource stores a Kubernetes object in the resources hierarchy
+// of the Rego data document. The layout of this hierarchy is:
+//
+// Resources in the default namespace are stored as:
+//	/resources/$resource/$name
+//
+// Namespaced resources are stored as:
+//	/resources/$namespace/$resource/$name
+func storeResource(r *Runner, u *unstructured.Unstructured) error {
+	gvr, err := r.Kube.ResourceForKind(u.GetObjectKind().GroupVersionKind())
+	if err != nil {
+		return err
+	}
+
+	var resourcePath string
+
+	if u.GetNamespace() == "default" {
+		resourcePath = path.Join("/", "resources", gvr.Resource, u.GetName())
+	} else {
+		resourcePath = path.Join("/", u.GetNamespace(), "resources", gvr.Resource, u.GetName())
+	}
+
+	return storeItem(r, resourcePath, u)
 }
