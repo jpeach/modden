@@ -18,3 +18,15 @@ func RandomStringN(length int) string {
 
 	return string(result)
 }
+
+//  ContainsString checks whether the wanted string is in the values
+// slice. This is suitable for short, unsorted slices.
+func ContainsString(values []string, wanted string) bool {
+	for _, v := range values {
+		if v == wanted {
+			return true
+		}
+	}
+
+	return false
+}

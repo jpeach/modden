@@ -12,9 +12,13 @@ const (
 	// the unique ID of a test run.
 	LabelRunID = "modden/run-id"
 
-	// LabelVersion is ann annotation key to mark an object
-	// with the version of the rest harness that created it.
+	// LabelVersion is an annotation key to mark an object
+	// with the version of the test harness that created it.
 	LabelVersion = "modden/version"
+
+	// LabelManagedBy is a label key to mark an object as
+	// managed by the test harness.
+	LabelManagedBy = "app.kubernetes.io/managed-by"
 )
 
 // SpecialOpsFilter is a yaml.Filter that extracts top-level YAML keys

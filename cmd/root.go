@@ -13,6 +13,14 @@ const (
 	EX_NOINPUT = 66
 )
 
+// CommandWithDefaults overwrites default values in the given command.
+func CommandWithDefaults(c *cobra.Command) *cobra.Command {
+	c.SilenceUsage = true
+	c.SilenceErrors = true
+
+	return c
+}
+
 // NewRootCommand represents the base command when called without any subcommands
 func NewRootCommand() *cobra.Command {
 	root := &cobra.Command{
@@ -30,6 +38,7 @@ to quickly create a Cobra application.`,
 	}
 
 	root.AddCommand(NewRunCommand())
+	root.AddCommand(NewGetCommand())
 
-	return root
+	return CommandWithDefaults(root)
 }

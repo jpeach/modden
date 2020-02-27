@@ -4,19 +4,21 @@ import (
 	"errors"
 	"log"
 
-	"k8s.io/client-go/discovery"
-	"k8s.io/client-go/kubernetes/scheme"
-
-	"k8s.io/apimachinery/pkg/runtime/schema"
+	"github.com/jpeach/modden/pkg/must"
+	"github.com/jpeach/modden/pkg/utils"
+	"k8s.io/apimachinery/pkg/labels"
 
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 
+	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/discovery/cached/memory"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 )
@@ -58,10 +60,7 @@ func (k *KubeClient) findAPIResourceForKind(kind schema.GroupVersionKind) (metav
 	// The listed resources will have empty Group and Version
 	// fields, which means that they are the same as that of the
 	// list. Parse the list's GroupVersion to populate the result.
-	gv, err := schema.ParseGroupVersion(resources.GroupVersion)
-	if err != nil {
-		return metav1.APIResource{}, err
-	}
+	gv := must.GroupVersion(schema.ParseGroupVersion(resources.GroupVersion))
 
 	for _, r := range resources.APIResources {
 		if r.Kind == kind.Kind {
@@ -102,6 +101,77 @@ func (k *KubeClient) ResourceForKind(kind schema.GroupVersionKind) (schema.Group
 		Version:  res.Version,
 		Resource: res.Name,
 	}, nil
+}
+
+// ListManagedObjects lists all objects that are labeled as managed.
+func (k *KubeClient) ListManagedObjects() ([]*unstructured.Unstructured, error) {
+	groups, err := k.Discovery.ServerPreferredResources()
+	if err != nil {
+		return nil, err
+	}
+
+	var results []*unstructured.Unstructured
+
+	var resources []schema.GroupVersionResource
+
+	for _, g := range groups {
+		gv := must.GroupVersion(schema.ParseGroupVersion(g.GroupVersion))
+
+		for _, r := range g.APIResources {
+			// Only choose resources we can list.
+			if !utils.ContainsString(r.Verbs, "list") {
+				continue
+			}
+
+			gvr := schema.GroupVersionResource{
+				Group:    gv.Group,
+				Version:  gv.Version,
+				Resource: r.Name,
+			}
+
+			resources = append(resources, gvr)
+		}
+	}
+
+	selector := labels.SelectorFromSet(labels.Set{LabelManagedBy: "modden"}).String()
+
+	for _, r := range resources {
+		// TODO(jpeach): set a more reasonable libit and implement Continue.
+		list, err := k.Dynamic.Resource(r).Namespace(metav1.NamespaceAll).List(
+			metav1.ListOptions{LabelSelector: selector, Limit: 10000})
+
+		if apierrors.IsNotFound(err) {
+			continue
+		}
+
+		if err != nil {
+			return nil, err
+		}
+
+		for _, u := range list.Items {
+			results = append(results, u.DeepCopy())
+		}
+	}
+
+	return results, nil
+}
+
+// RunIDFor returns the test run ID for u, if there is one. If there
+// is no run ID, it returns "".
+func (k *KubeClient) RunIDFor(u *unstructured.Unstructured) (string, error) {
+	for k, v := range u.GetAnnotations() {
+		if k == LabelRunID {
+			return v, nil
+		}
+	}
+
+	// If this object doesn't have th run ID, walk up the owner
+	// refs to try to find it.
+	for range u.GetOwnerReferences() {
+		// TODO(jpeach) ...
+	}
+
+	return "", nil
 }
 
 // NewKubeClient returns a new set of Kubernetes client interfaces

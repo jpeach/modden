@@ -3,10 +3,12 @@ module github.com/jpeach/modden
 go 1.13
 
 require (
+	github.com/fatih/color v1.9.0 // indirect
 	github.com/ghodss/yaml v1.0.0 // indirect
 	github.com/go-bindata/go-bindata v3.1.2+incompatible
 	github.com/google/go-cmp v0.3.1
 	github.com/google/uuid v1.1.1
+	github.com/gosuri/uitable v0.0.4
 	github.com/open-policy-agent/opa v0.15.0
 	github.com/pkg/errors v0.8.1 // indirect
 	github.com/spf13/cobra v0.0.5

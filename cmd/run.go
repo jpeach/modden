@@ -13,7 +13,7 @@ import (
 
 // NewRunCommand returns a command ro run a test case.
 func NewRunCommand() *cobra.Command {
-	c := &cobra.Command{
+	run := &cobra.Command{
 		Use:   "run",
 		Short: "A brief description of your command",
 		Long: `A longer description that spans multiple lines and likely contains examples
@@ -22,7 +22,6 @@ and usage of using your command. For example:
 Cobra is a CLI library for Go that empowers applications.
 This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
-		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			traceFlags, err := makeTraceFlags(cmd)
 			if err != nil {
@@ -90,9 +89,9 @@ to quickly create a Cobra application.`,
 		},
 	}
 
-	c.Flags().String("trace", "", "Set execution tracing flags")
+	run.Flags().String("trace", "", "Set execution tracing flags")
 
-	return c
+	return CommandWithDefaults(run)
 }
 
 func makeTraceFlags(cmd *cobra.Command) (test.TraceFlag, error) {
