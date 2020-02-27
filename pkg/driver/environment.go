@@ -66,6 +66,13 @@ func (e *environ) HydrateObject(objData []byte) (*Object, error) {
 		return nil, err
 	}
 
+	// Inject test metadata.
+	resource, err = resource.Pipe(
+		&MetaInjectionFilter{RunID: e.UniqueID(), ManagedBy: "modden"})
+	if err != nil {
+		return nil, err
+	}
+
 	meta, err := resource.GetMeta()
 	if err != nil {
 		return nil, err

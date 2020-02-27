@@ -7,6 +7,16 @@ import (
 	"sigs.k8s.io/kustomize/kyaml/yaml"
 )
 
+const (
+	// LabelRunID is an annotation key to mark an object with
+	// the unique ID of a test run.
+	LabelRunID = "modden/run-id"
+
+	// LabelVersion is ann annotation key to mark an object
+	// with the version of the rest harness that created it.
+	LabelVersion = "modden/version"
+)
+
 // SpecialOpsFilter is a yaml.Filter that extracts top-level YAML keys
 // whose name begins with `$`. These keys denote special operations
 // that test drivers need to interpolate.
@@ -48,6 +58,49 @@ func (s *SpecialOpsFilter) Filter(rn *yaml.RNode) (*yaml.RNode, error) {
 func isStringNode(n *yaml.Node) bool {
 	return n.Kind == yaml.ScalarNode &&
 		n.Tag == fieldmeta.String.Tag()
+}
+
+type MetaInjectionFilter struct {
+	RunID     string
+	ManagedBy string
+}
+
+var _ yaml.Filter = &MetaInjectionFilter{}
+
+func (m *MetaInjectionFilter) Filter(rn *yaml.RNode) (*yaml.RNode, error) {
+	// First, inject the management label to the top object.
+	if _, err := rn.Pipe(
+		yaml.PathGetter{Create: yaml.MappingNode, Path: []string{"metadata", "labels"}},
+		yaml.FieldSetter{Name: "app.kubernetes.io/managed-by", StringValue: m.ManagedBy},
+	); err != nil {
+		return nil, err
+	}
+
+	// Next, label the top level with the run ID.
+	if _, err := rn.Pipe(
+		yaml.PathGetter{Create: yaml.MappingNode, Path: []string{"metadata", "annotations"}},
+		yaml.FieldSetter{Name: LabelRunID, StringValue: m.RunID},
+	); err != nil {
+		return nil, err
+	}
+
+	// Check whether this looks like an object that has a pod spec template.
+	if c, err := rn.Pipe(
+		yaml.PathGetter{Path: []string{"spec", "template", "spec", "containers"}},
+	); c == nil || err != nil {
+		return rn, err
+	}
+
+	// Since this object has a pod spec template, inject test metadata annotations into it.
+	if _, err := rn.Pipe(
+		yaml.PathGetter{Create: yaml.MappingNode, Path: []string{"spec", "template", "metadata", "annotations"}},
+		yaml.FieldSetter{Name: LabelRunID, StringValue: m.RunID},
+	); err != nil {
+		return nil, err
+	}
+
+	return rn, nil
+
 }
 
 // yamlKindStr stringifies the yaml.Kind since kyaml doesn't do that for us.

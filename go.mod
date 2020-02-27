@@ -7,7 +7,6 @@ require (
 	github.com/go-bindata/go-bindata v3.1.2+incompatible
 	github.com/google/go-cmp v0.3.1
 	github.com/google/uuid v1.1.1
-	github.com/magiconair/properties v1.8.0
 	github.com/open-policy-agent/opa v0.15.0
 	github.com/pkg/errors v0.8.1 // indirect
 	github.com/spf13/cobra v0.0.5
