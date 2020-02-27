@@ -4,8 +4,11 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/google/uuid"
 	"github.com/jpeach/modden/pkg/doc"
+	"github.com/jpeach/modden/pkg/version"
+
+	"github.com/google/uuid"
+
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	yamlutil "k8s.io/apimachinery/pkg/util/yaml"
 	"sigs.k8s.io/kustomize/kyaml/yaml"
@@ -68,7 +71,7 @@ func (e *environ) HydrateObject(objData []byte) (*Object, error) {
 
 	// Inject test metadata.
 	resource, err = resource.Pipe(
-		&MetaInjectionFilter{RunID: e.UniqueID(), ManagedBy: "modden"})
+		&MetaInjectionFilter{RunID: e.UniqueID(), ManagedBy: version.Progname})
 	if err != nil {
 		return nil, err
 	}

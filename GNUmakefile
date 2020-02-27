@@ -9,6 +9,10 @@ export GO111MODULE=on
 BIN := modden
 SRC := $(BIN).tgz
 
+REPO := github.com/jpeach/modden
+SHA := $(shell git rev-parse HEAD)
+REVISION := $(shell git rev-parse --symbolic HEAD)
+
 .PHONY: help
 help:
 	@echo "$(BIN)"
@@ -19,7 +23,10 @@ help:
 .PHONY: build
 build: ## Build
 build: pkg/builtin/assets.go
-	$(GO) build -o $(BIN) .
+	$(GO) build \
+		-ldflags "-X $(REPO)/pkg/version.Revision=$(REVISION)" \
+		-ldflags "-X $(REPO)/pkg/version.Sha=$(SHA)" \
+		-o $(BIN) .
 
 pkg/builtin/assets.go: $(wildcard pkg/builtin/*.rego) $(wildcard pkg/builtin/*.yaml)
 	go run github.com/go-bindata/go-bindata/go-bindata -pkg builtin -o $@ $^
