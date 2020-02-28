@@ -19,6 +19,7 @@ for dealing with YAML and generic Kubernetes objects
     - [ ] Apply objects as a patch, shorthand or template to reduce test verbosity.
     - [X] Patch existing objects.
     - [ ] Delete objects (by name or labels).
+    - [ ] Take a path to a directory of YAML objects that can be used as defaults.
 
 - Logging
     - [ ] Global logging wrappers package.
