@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/jpeach/modden/pkg/must"
+	"k8s.io/client-go/kubernetes/scheme"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -89,8 +90,16 @@ func (o objectDriver) Apply(obj *unstructured.Unstructured) (*OperationResult, e
 	if apierrors.IsAlreadyExists(err) {
 		name := obj.GetName()
 		opt := metav1.PatchOptions{}
-		ptype := types.StrategicMergePatchType
+		ptype := types.MergePatchType
 		data := must.Bytes(obj.MarshalJSON())
+
+		// This is a hacky shortcut to emulate what kubectl
+		// does in apply.Patcher. Since only built-in types
+		// support strategic merge, we use the scheme check
+		// to test whether this object is builtin or not.
+		if _, err := scheme.Scheme.New(obj.GroupVersionKind()); err == nil {
+			ptype = types.StrategicMergePatchType
+		}
 
 		if isNamespaced {
 			latest, err = o.kube.Dynamic.Resource(gvr).Namespace(obj.GetNamespace()).Patch(name, ptype, data, opt)

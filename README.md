@@ -17,7 +17,7 @@ for dealing with YAML and generic Kubernetes objects
     - [ ] Reconcile (i.e. report status) for uninterpreted YAML objects.
     - [ ] Interpolate object names to ensure uniqueness for a test run.
     - [ ] Apply objects as a patch, shorthand or template to reduce test verbosity.
-    - [ ] Patch existing objects.
+    - [X] Patch existing objects.
     - [ ] Delete objects (by name or labels).
 
 - Logging
