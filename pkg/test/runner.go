@@ -6,10 +6,13 @@ import (
 	"os"
 	"path"
 
+	"github.com/fatih/color"
 	"github.com/jpeach/modden/pkg/doc"
 	"github.com/jpeach/modden/pkg/driver"
+
 	"github.com/open-policy-agent/opa/rego"
 	"github.com/open-policy-agent/opa/storage"
+
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
@@ -155,17 +158,27 @@ func applyObject(r *Runner, u *unstructured.Unstructured) (*driver.OperationResu
 	return r.Obj.Apply(u)
 }
 
+func printResults(resultSet []driver.CheckResult) {
+	colors := map[driver.Severity]func(string, ...interface{}){
+		driver.SeverityNone:  nil,
+		driver.SeverityWarn:  color.Yellow,
+		driver.SeverityError: color.Red,
+		driver.SeverityFatal: color.HiMagenta,
+	}
+
+	for _, r := range resultSet {
+		// TODO(jpeach): convert to test result and propagate.
+		colors[r.Severity]("%s: %s", r.Severity, r.Message)
+	}
+}
+
 func runCheckWithInput(r *Runner, f *doc.Fragment, in interface{}) error {
 	resultSet, err := r.Rego.Eval(f.Rego(), rego.Input(in))
 	if err != nil {
 		return err
 	}
 
-	for _, r := range resultSet {
-		// TODO(jpeach): convert to test result and propagate.
-		log.Printf("%s: %s", r.Severity, r.Message)
-	}
-
+	printResults(resultSet)
 	return err
 }
 
@@ -175,11 +188,7 @@ func runCheck(r *Runner, f *doc.Fragment) error {
 		return err
 	}
 
-	for _, r := range resultSet {
-		// TODO(jpeach): convert to test result and propagate.
-		log.Printf("%s: %s", r.Severity, r.Message)
-	}
-
+	printResults(resultSet)
 	return err
 }
 

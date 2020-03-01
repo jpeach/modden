@@ -3,7 +3,7 @@ module github.com/jpeach/modden
 go 1.13
 
 require (
-	github.com/fatih/color v1.9.0 // indirect
+	github.com/fatih/color v1.9.0
 	github.com/ghodss/yaml v1.0.0 // indirect
 	github.com/go-bindata/go-bindata v3.1.2+incompatible
 	github.com/google/go-cmp v0.3.1
