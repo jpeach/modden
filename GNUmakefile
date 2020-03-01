@@ -2,8 +2,6 @@ RM_F := rm -rf
 GO := go
 GIT := git
 
-Additional_Linters := misspell,nakedret,goimports,misspell,unparam,unconvert,bodyclose,govet
-
 export GO111MODULE=on
 
 BIN := modden
@@ -45,15 +43,17 @@ check-tidy: ## Run linters
 
 .PHONY: check-lint
 check-lint: ## Run linters
-	@docker run \
-		--rm \
-		--volume $$(pwd):/app \
-		--workdir /app \
-		--env GO111MODULE \
-		golangci/golangci-lint:v1.21.0 \
-		golangci-lint run \
-			--timeout 10m \
-			--enable $(Additional_Linters)
+	@if command -v golangci-lint > /dev/null 2>&1 ; then \
+		golangci-lint run --exclude-use-default=false ; \
+	else \
+		docker run \
+			--rm \
+			--volume $$(pwd):/app \
+			--workdir /app \
+			--env GO111MODULE \
+			golangci/golangci-lint:v1.23.7 \
+			golangci-lint run --exclude-use-default=false ; \
+	fi
 
 .PHONY: clean
 clean: ## Remove output files

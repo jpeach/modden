@@ -13,13 +13,13 @@ func RandomStringN(length int) string {
 	result := make([]byte, length)
 
 	for i := range result {
-		result[i] = alpha[rand.Int()%len(alpha)]
+		result[i] = alpha[rand.Int()%len(alpha)] //nolint(gosec)
 	}
 
 	return string(result)
 }
 
-//  ContainsString checks whether the wanted string is in the values
+// ContainsString checks whether the wanted string is in the values
 // slice. This is suitable for short, unsorted slices.
 func ContainsString(values []string, wanted string) bool {
 	for _, v := range values {

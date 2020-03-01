@@ -10,11 +10,11 @@ import (
 
 const (
 	// EX_FAIL is an exit code indicating an unspecified error.
-	EX_FAIL = 1
+	EX_FAIL = 1 //nolint(golint)
 	// EX_USAGE is an exit code indicating invalid invocation syntax.
-	EX_USAGE = 65
+	EX_USAGE = 65 //nolint(golint)
 	// EX_NOINPUT is an exit code indicating missing input data.
-	EX_NOINPUT = 66
+	EX_NOINPUT = 66 //nolint(golint)
 )
 
 // CommandWithDefaults overwrites default values in the given command.

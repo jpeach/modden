@@ -13,12 +13,14 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
+// OperationResult captures the result of applying a Kubernetes object.
 type OperationResult struct {
 	Error  *metav1.Status             `json:"error"`
 	Latest *unstructured.Unstructured `json:"latest"`
 	Target ObjectReference            `json:"target"`
 }
 
+// Succeeded returns true if the operation was successful.
 func (o *OperationResult) Succeeded() bool {
 	return o.Error == nil
 }
@@ -41,6 +43,7 @@ type ObjectDriver interface {
 	DeleteAll()
 }
 
+// NewObjectDriver returns a new ObjectDriver.
 func NewObjectDriver(client *KubeClient) ObjectDriver {
 	return &objectDriver{
 		kube:       client,

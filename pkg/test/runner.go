@@ -16,10 +16,13 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
+// TraceFlag specifies what tracing output to enable
 type TraceFlag int
 
 const (
+	// TraceNone is the default trace type.
 	TraceNone TraceFlag = 0
+	// TraceRego enables tracing Rego execution.
 	TraceRego TraceFlag = 1 << iota
 )
 
@@ -34,6 +37,8 @@ type Runner struct {
 }
 
 // Run executes a test document.
+//
+// nolint(gocognit)
 func (r *Runner) Run(testDoc *doc.Document) error {
 	if (r.Trace & TraceRego) != 0 {
 		r.Rego.Trace(driver.NewCheckTracer(os.Stdout))

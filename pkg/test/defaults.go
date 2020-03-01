@@ -6,6 +6,8 @@ import (
 	"github.com/jpeach/modden/pkg/must"
 )
 
+// DefaultObjectUpdateCheck returns a built-in default check for applying
+// Kubernetes objects.
 func DefaultObjectUpdateCheck() *doc.Fragment {
 	data := must.Bytes(builtin.Asset("pkg/builtin/objectCheck.rego"))
 

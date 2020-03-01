@@ -64,6 +64,9 @@ func isStringNode(n *yaml.Node) bool {
 		n.Tag == fieldmeta.String.Tag()
 }
 
+// MetaInjectionFilter injects ObjectMeta data into Kubernetes objects.
+// Specifically, it labels objects with the ManagedBy string, and
+// annotates with the RunID.
 type MetaInjectionFilter struct {
 	RunID     string
 	ManagedBy string
@@ -71,6 +74,7 @@ type MetaInjectionFilter struct {
 
 var _ yaml.Filter = &MetaInjectionFilter{}
 
+// Filter ...
 func (m *MetaInjectionFilter) Filter(rn *yaml.RNode) (*yaml.RNode, error) {
 	// First, inject the management label to the top object.
 	if _, err := rn.Pipe(

@@ -20,6 +20,7 @@ func GroupVersion(gv schema.GroupVersion, err error) schema.GroupVersion {
 	return gv
 }
 
+// String panics if the error is set, otherwise returns s.
 func String(s string, err error) string {
 	if err != nil {
 		panic(err.Error())

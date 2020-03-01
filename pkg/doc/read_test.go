@@ -39,7 +39,7 @@ func TestReadDocument(t *testing.T) {
 		Data: "one",
 		Want: Document{
 			Parts: []Fragment{
-				Fragment{
+				{
 					Bytes: []byte{'o', 'n', 'e'},
 				},
 			},
@@ -52,9 +52,9 @@ func TestReadDocument(t *testing.T) {
 ---`,
 		Want: Document{
 			Parts: []Fragment{
-				Fragment{Bytes: []byte{}},
-				Fragment{Bytes: []byte{}},
-				Fragment{Bytes: []byte{}},
+				{Bytes: []byte{}},
+				{Bytes: []byte{}},
+				{Bytes: []byte{}},
 			},
 		},
 	})
@@ -67,9 +67,9 @@ b
 c`,
 		Want: Document{
 			Parts: []Fragment{
-				Fragment{Bytes: []byte{'a', '\n'}},
-				Fragment{Bytes: []byte{'b', '\n'}},
-				Fragment{Bytes: []byte{'c'}},
+				{Bytes: []byte{'a', '\n'}},
+				{Bytes: []byte{'b', '\n'}},
+				{Bytes: []byte{'c'}},
 			},
 		},
 	})
@@ -83,9 +83,9 @@ c
 ---`,
 		Want: Document{
 			Parts: []Fragment{
-				Fragment{Bytes: []byte{'a', '\n'}},
-				Fragment{Bytes: []byte{'b', '\n'}},
-				Fragment{Bytes: []byte{'c', '\n'}},
+				{Bytes: []byte{'a', '\n'}},
+				{Bytes: []byte{'b', '\n'}},
+				{Bytes: []byte{'c', '\n'}},
 			},
 		},
 	})
@@ -97,8 +97,8 @@ a
 b`,
 		Want: Document{
 			Parts: []Fragment{
-				Fragment{Bytes: []byte{'f', ' ', '-', '-', '-', '\n', 'a', '\n'}},
-				Fragment{Bytes: []byte{'b'}},
+				{Bytes: []byte{'f', ' ', '-', '-', '-', '\n', 'a', '\n'}},
+				{Bytes: []byte{'b'}},
 			},
 		},
 	})

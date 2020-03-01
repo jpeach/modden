@@ -36,6 +36,7 @@ type CheckResult struct {
 	Message  string
 }
 
+// CheckTracer is a tracer for check execution.
 type CheckTracer interface {
 	topdown.Tracer
 	Write()
@@ -52,6 +53,7 @@ func (d *defaultTracer) Write() {
 
 var _ CheckTracer = &defaultTracer{}
 
+// NewCheckTracer returns a new CheckTracer that traces to w.
 func NewCheckTracer(w io.Writer) CheckTracer {
 	return &defaultTracer{
 		BufferTracer: topdown.NewBufferTracer(),

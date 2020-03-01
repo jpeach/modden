@@ -14,6 +14,7 @@ import (
 	"sigs.k8s.io/kustomize/kyaml/yaml"
 )
 
+// Environment holds metadata that describes the context of a test.
 type Environment interface {
 	// UniqueID returns a unique identifier for this Environment instance.
 	UniqueID() string
@@ -22,6 +23,7 @@ type Environment interface {
 	HydrateObject(objData []byte) (*Object, error)
 }
 
+// NewEnvironment returns a new Environment.
 func NewEnvironment() Environment {
 	return &environ{
 		uid: uuid.New().String(),

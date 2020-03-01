@@ -15,6 +15,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/duration"
 )
 
+// NewGetCommand returns a new "get" command tree.
 func NewGetCommand() *cobra.Command {
 	get := &cobra.Command{
 		Use:          "get",
