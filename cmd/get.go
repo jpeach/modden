@@ -7,6 +7,7 @@ import (
 
 	"github.com/jpeach/modden/pkg/driver"
 	"github.com/jpeach/modden/pkg/must"
+	"github.com/jpeach/modden/pkg/version"
 
 	"github.com/gosuri/uitable"
 	"github.com/spf13/cobra"
@@ -40,7 +41,7 @@ with the %s%s%s label.`,
 				return fmt.Errorf("failed to initialize Kubernetes context: %s", err)
 			}
 
-			results, err := kube.ListManagedObjects()
+			results, err := kube.SelectObjectsByLabel(driver.LabelManagedBy, version.Progname)
 			if err != nil {
 				log.Printf("%s", err)
 				return err

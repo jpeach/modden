@@ -6,7 +6,6 @@ import (
 
 	"github.com/jpeach/modden/pkg/must"
 	"github.com/jpeach/modden/pkg/utils"
-	"github.com/jpeach/modden/pkg/version"
 
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -103,14 +102,12 @@ func (k *KubeClient) ResourceForKind(kind schema.GroupVersionKind) (schema.Group
 	}, nil
 }
 
-// ListManagedObjects lists all objects that are labeled as managed.
-func (k *KubeClient) ListManagedObjects() ([]*unstructured.Unstructured, error) {
+// SelectObjectsByLabel lists all objects that are labeled as managed.
+func (k *KubeClient) SelectObjectsByLabel(label string, value string) ([]*unstructured.Unstructured, error) {
 	groups, err := k.Discovery.ServerPreferredResources()
 	if err != nil {
 		return nil, err
 	}
-
-	var results []*unstructured.Unstructured
 
 	var resources []schema.GroupVersionResource
 
@@ -133,7 +130,9 @@ func (k *KubeClient) ListManagedObjects() ([]*unstructured.Unstructured, error) 
 		}
 	}
 
-	selector := labels.SelectorFromSet(labels.Set{LabelManagedBy: version.Progname}).String()
+	selector := labels.SelectorFromSet(labels.Set{label: value}).String()
+
+	var results []*unstructured.Unstructured
 
 	for _, r := range resources {
 		// TODO(jpeach): set a more reasonable libit and implement Continue.
