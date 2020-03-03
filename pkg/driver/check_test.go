@@ -133,8 +133,7 @@ func TestStorePathItem(t *testing.T) {
 	}
 
 	read := func(where string) (interface{}, error) {
-		txn, err := r.store.NewTransaction(ctx)
-		require.NoError(t, err, "NewTransaction failed")
+		txn := storage.NewTransactionOrDie(ctx, r.store)
 		defer r.store.Abort(ctx, txn)
 
 		// Ensure that we can read it back.
@@ -172,4 +171,36 @@ func TestStorePathItem(t *testing.T) {
 	val, err = read("/test/path/two")
 	require.NoError(t, err, "reading store path %q", "/test/path/two")
 	assert.Equal(t, updatedValue, val)
+}
+
+func TestStoreRemoveItem(t *testing.T) {
+	// Use the underlying Rego driver type so we can directly access the Store.
+	r := &regoDriver{
+		store: inmem.New(),
+	}
+
+	ctx := context.TODO()
+
+	//nolint(unparam)
+	read := func(where string) (interface{}, error) {
+		txn := storage.NewTransactionOrDie(ctx, r.store)
+		defer r.store.Abort(ctx, txn)
+
+		// Ensure that we can read it back.
+		return r.store.Read(ctx, txn, storage.MustParsePath(where))
+	}
+
+	assert.NoError(t, r.StorePath("/test/path/one"))
+
+	// Ensure that we can read it back.
+	_, err := read("/test/path/one")
+	require.NoError(t, err, "reading store path %q", "/test/path/one")
+
+	assert.NoError(t, r.RemovePath("/test/path/one"))
+
+	// Ensure that it is gone can read it back.
+	_, err = read("/test/path/one")
+	require.True(t, storage.IsNotFound(err), "error is %s", err)
+
+	assert.True(t, storage.IsNotFound(r.RemovePath("/no/such/path")))
 }

@@ -73,6 +73,9 @@ type CheckDriver interface {
 
 	// StorePath creates the given path in the Rego data document.
 	StorePath(where string) error
+
+	// RemovePath remove any object at the given path in the Rego data document.
+	RemovePath(where string) error
 }
 
 // NewRegoDriver creates a new CheckDriver that evaluates checks
@@ -147,6 +150,24 @@ func (r *regoDriver) StorePath(where string) error {
 			r.store.Abort(ctx, txn)
 			return err
 		}
+	}
+
+	if err := r.store.Commit(ctx, txn); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// RemovePath removes the given path in the Rego data document.
+func (r *regoDriver) RemovePath(where string) error {
+	ctx := context.Background()
+	txn := storage.NewTransactionOrDie(ctx, r.store, storage.WriteParams)
+
+	if err := r.store.Write(ctx, txn, storage.RemoveOp, storage.MustParsePath(where), nil); err != nil {
+		r.store.Abort(ctx, txn)
+		return err
+
 	}
 
 	if err := r.store.Commit(ctx, txn); err != nil {

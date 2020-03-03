@@ -57,8 +57,11 @@ func (r *Runner) Run(testDoc *doc.Document) error {
 			if u, ok := newObj.(*unstructured.Unstructured); ok {
 				storeResource(r, u)
 			}
+		}, DeleteFunc: func(o interface{}) {
+			if u, ok := o.(*unstructured.Unstructured); ok {
+				removeResource(r, u)
+			}
 		},
-		DeleteFunc: nil,
 	})
 
 	defer cancelWatch()
@@ -218,6 +221,19 @@ func runCheck(r *Runner, f *doc.Fragment) error {
 	return err
 }
 
+// Resources in the default namespace are stored as:
+//	/resources/$resource/$name
+//
+// Namespaced resources are stored as:
+//     /resources/$namespace/$resource/$name
+func pathForResource(resource string, u *unstructured.Unstructured) string {
+	if u.GetNamespace() == "default" {
+		return path.Join("/", "resources", resource, u.GetName())
+	}
+
+	return path.Join("/", "resources", u.GetNamespace(), resource, u.GetName())
+}
+
 // storeItem stores an arbitrary item at the given path in the Rego
 // data document. If we get a NotFound error when we store the resource,
 // that means that an intermediate path element doesn't exist. In that
@@ -237,29 +253,26 @@ func storeItem(r *Runner, where string, what interface{}) error {
 }
 
 // storeResource stores a Kubernetes object in the resources hierarchy
-// of the Rego data document. The layout of this hierarchy is:
-//
-// Resources in the default namespace are stored as:
-//	/resources/$resource/$name
-//
-// Namespaced resources are stored as:
-//	/resources/$namespace/$resource/$name
+// of the Rego data document.
 func storeResource(r *Runner, u *unstructured.Unstructured) error {
 	gvr, err := r.Kube.ResourceForKind(u.GetObjectKind().GroupVersionKind())
 	if err != nil {
 		return err
 	}
 
-	var resourcePath string
-
-	if u.GetNamespace() == "default" {
-		resourcePath = path.Join("/", "resources", gvr.Resource, u.GetName())
-	} else {
-		resourcePath = path.Join("/", u.GetNamespace(), "resources", gvr.Resource, u.GetName())
-	}
-
 	// NOTE(jpeach): we have to marshall the inner object into
 	// the store because we don't want the resource enclosed in
 	// a dictionary with the key "Object".
-	return storeItem(r, resourcePath, u.UnstructuredContent())
+	return storeItem(r, pathForResource(gvr.Resource, u), u.UnstructuredContent())
+}
+
+// removeResource removes a Kubernetes object from the resources hierarchy
+// of the Rego data document.
+func removeResource(r *Runner, u *unstructured.Unstructured) error {
+	gvr, err := r.Kube.ResourceForKind(u.GetObjectKind().GroupVersionKind())
+	if err != nil {
+		return err
+	}
+
+	return r.Rego.RemovePath(pathForResource(gvr.Resource, u))
 }

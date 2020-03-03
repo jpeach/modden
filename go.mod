@@ -9,6 +9,7 @@ require (
 	github.com/google/go-cmp v0.3.1
 	github.com/google/uuid v1.1.1
 	github.com/gosuri/uitable v0.0.4
+	github.com/magiconair/properties v1.8.0
 	github.com/open-policy-agent/opa v0.17.2
 	github.com/pkg/errors v0.8.1 // indirect
 	github.com/spf13/cobra v0.0.5
