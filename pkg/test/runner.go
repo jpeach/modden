@@ -6,14 +6,14 @@ import (
 	"os"
 	"path"
 
-	"github.com/fatih/color"
 	"github.com/jpeach/modden/pkg/doc"
 	"github.com/jpeach/modden/pkg/driver"
 
+	"github.com/fatih/color"
 	"github.com/open-policy-agent/opa/rego"
 	"github.com/open-policy-agent/opa/storage"
-
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/client-go/tools/cache"
 )
 
 // TraceFlag specifies what tracing output to enable
@@ -43,6 +43,25 @@ func (r *Runner) Run(testDoc *doc.Document) error {
 	if (r.Trace & TraceRego) != 0 {
 		r.Rego.Trace(driver.NewCheckTracer(os.Stdout))
 	}
+
+	// Start receiving Kubernetes objects and adding them to the
+	// store. We currently don't need any locking around this since
+	// the Rego store is transactional and this path doesn't touch
+	// any other shared data.
+	cancelWatch := r.Obj.Watch(cache.ResourceEventHandlerFuncs{
+		AddFunc: func(o interface{}) {
+			if u, ok := o.(*unstructured.Unstructured); ok {
+				storeResource(r, u)
+			}
+		}, UpdateFunc: func(oldObj interface{}, newObj interface{}) {
+			if u, ok := newObj.(*unstructured.Unstructured); ok {
+				storeResource(r, u)
+			}
+		},
+		DeleteFunc: nil,
+	})
+
+	defer cancelWatch()
 
 	for i, p := range testDoc.Parts {
 		// TODO(jpeach): this is a step, record actions, errors, results.
@@ -124,6 +143,8 @@ func (r *Runner) Run(testDoc *doc.Document) error {
 			// fatally handled.
 		}
 	}
+
+	r.Obj.Done()
 
 	// TODO(jpeach): return a structured test result object.
 	return nil

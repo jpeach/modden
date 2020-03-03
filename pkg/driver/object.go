@@ -3,17 +3,29 @@ package driver
 import (
 	"errors"
 	"fmt"
+	"sync"
+	"time"
 
 	"github.com/jpeach/modden/pkg/must"
-	"k8s.io/client-go/kubernetes/scheme"
+	"github.com/jpeach/modden/pkg/version"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/dynamic/dynamicinformer"
+	"k8s.io/client-go/informers"
+	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/tools/cache"
 )
 
-// OperationResult captures the result of applying a Kubernetes object.
+// DefaultResyncPeriod is the default informer resync interval.
+const DefaultResyncPeriod = time.Minute * 5
+
+// OperationResult describes the result of an attempt to apply a
+// Kubernetes object update.
 type OperationResult struct {
 	Error  *metav1.Status             `json:"error"`
 	Latest *unstructured.Unstructured `json:"latest"`
@@ -38,17 +50,45 @@ type ObjectDriver interface {
 	// Adopt tells the driver to take ownership of and to start tracking
 	// the specified object. Any adopted objects will be included in a
 	// DeleteAll operation.
-	Adopt(*unstructured.Unstructured)
+	Adopt(*unstructured.Unstructured) error
 
 	DeleteAll()
+
+	Watch(cache.ResourceEventHandler) func()
+
+	Done()
 }
 
 // NewObjectDriver returns a new ObjectDriver.
 func NewObjectDriver(client *KubeClient) ObjectDriver {
-	return &objectDriver{
-		kube:       client,
-		objectPool: make([]*unstructured.Unstructured, 0),
+	selector := labels.SelectorFromSet(labels.Set{LabelManagedBy: version.Progname}).String()
+
+	factory := dynamicinformer.NewFilteredDynamicSharedInformerFactory(
+		client.Dynamic,
+		DefaultResyncPeriod,
+		metav1.NamespaceAll,
+		func(o *metav1.ListOptions) {
+			o.LabelSelector = selector
+		},
+	)
+
+	o := &objectDriver{
+		kube:            client,
+		informerStopper: make(chan struct{}),
+		informerFactory: factory,
+
+		// watcherLock holds a lock over the watchers because
+		// we need to ensure watcher add and remove operations
+		// are serialized WRT event delivery.
+		watcherLock: LockingResourceEventHandler{
+			Next: &MuxingResourceEventHandler{},
+		},
+
+		objectPool:   make(map[types.UID]*unstructured.Unstructured),
+		informerPool: make(map[schema.GroupVersionResource]informers.GenericInformer),
 	}
+
+	return o
 }
 
 var _ ObjectDriver = &objectDriver{}
@@ -56,10 +96,52 @@ var _ ObjectDriver = &objectDriver{}
 type objectDriver struct {
 	kube *KubeClient
 
-	objectPool []*unstructured.Unstructured
+	informerStopper chan struct{}
+	informerFactory dynamicinformer.DynamicSharedInformerFactory
+
+	watcherLock LockingResourceEventHandler
+
+	informerPool map[schema.GroupVersionResource]informers.GenericInformer
+
+	objectLock sync.Mutex
+	objectPool map[types.UID]*unstructured.Unstructured
 }
 
-func (o objectDriver) Apply(obj *unstructured.Unstructured) (*OperationResult, error) {
+// Done resets the object driver.
+func (o *objectDriver) Done() {
+	// Tell any informers to shut down.
+	close(o.informerStopper)
+
+	// Hold the watcher lock while we clear the watchers.
+	o.watcherLock.Lock.Lock()
+	o.watcherLock.Next.(*MuxingResourceEventHandler).Clear()
+	o.watcherLock.Lock.Unlock()
+
+	// Hold the object lock while we cleat the object pool.
+	o.objectLock.Lock()
+	o.objectPool = make(map[types.UID]*unstructured.Unstructured)
+	o.objectLock.Unlock()
+
+	// There is no locking on the informer pool since driver
+	// methods must not be called concurrently.
+	o.informerPool = make(map[schema.GroupVersionResource]informers.GenericInformer)
+}
+
+func (o *objectDriver) Watch(e cache.ResourceEventHandler) func() {
+	o.watcherLock.Lock.Lock()
+	defer o.watcherLock.Lock.Unlock()
+
+	which := o.watcherLock.Next.(*MuxingResourceEventHandler).Add(e)
+
+	return func() {
+		o.watcherLock.Lock.Lock()
+		defer o.watcherLock.Lock.Unlock()
+
+		o.watcherLock.Next.(*MuxingResourceEventHandler).Remove(which)
+	}
+}
+
+func (o *objectDriver) Apply(obj *unstructured.Unstructured) (*OperationResult, error) {
 	obj = obj.DeepCopy()
 	gvk := obj.GetObjectKind().GroupVersionKind()
 
@@ -72,6 +154,45 @@ func (o objectDriver) Apply(obj *unstructured.Unstructured) (*OperationResult, e
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve resource for kind %s:%s: %s",
 			obj.GetAPIVersion(), obj.GetKind(), err)
+	}
+
+	// If we don't already have an informer for this resource, start one now.
+	if _, ok := o.informerPool[gvr]; !ok {
+		genericInformer := o.informerFactory.ForResource(gvr)
+		genericInformer.Informer().AddEventHandler(
+			&WrappingResourceEventHandlerFuncs{
+				Next: &o.watcherLock,
+				AddFunc: func(obj interface{}) {
+					o.objectLock.Lock()
+					defer o.objectLock.Unlock()
+
+					if u, ok := obj.(*unstructured.Unstructured); ok {
+						o.updateAdoptedObject(u)
+					}
+				},
+				UpdateFunc: func(oldObj, newObj interface{}) {
+					o.objectLock.Lock()
+					defer o.objectLock.Unlock()
+
+					if u, ok := newObj.(*unstructured.Unstructured); ok {
+						o.updateAdoptedObject(u)
+					}
+				},
+				DeleteFunc: func(obj interface{}) {
+					o.objectLock.Lock()
+					defer o.objectLock.Unlock()
+
+					if u, ok := obj.(*unstructured.Unstructured); ok {
+						delete(o.objectPool, u.GetUID())
+					}
+				},
+			})
+
+		o.informerPool[gvr] = genericInformer
+
+		go func() {
+			genericInformer.Informer().Run(o.informerStopper)
+		}()
 	}
 
 	if isNamespaced {
@@ -120,7 +241,11 @@ func (o objectDriver) Apply(obj *unstructured.Unstructured) (*OperationResult, e
 	switch err {
 	case nil:
 		result.Latest = latest
-		o.Adopt(latest.DeepCopy())
+		if err := o.Adopt(latest); err != nil {
+			return nil, fmt.Errorf("failed to adopt %s %s/%s: %w",
+				latest.GetKind(), latest.GetNamespace(), latest.GetName(), err)
+
+		}
 
 	default:
 		var statusError *apierrors.StatusError
@@ -134,15 +259,45 @@ func (o objectDriver) Apply(obj *unstructured.Unstructured) (*OperationResult, e
 	return &result, nil
 }
 
-func (o objectDriver) Delete( /* TypeMeta? */ ) {
+func (o *objectDriver) Delete( /* TypeMeta? */ ) {
 	panic("implement me")
 }
 
-func (o objectDriver) Adopt(obj *unstructured.Unstructured) {
-	//TODO(jpeach): index the object pool by something?
-	o.objectPool = append(o.objectPool, obj)
+func (o *objectDriver) updateAdoptedObject(obj *unstructured.Unstructured) {
+	uid := obj.GetUID()
+
+	// Update our adopted object only if it is from a newer generation.
+	if prev, ok := o.objectPool[uid]; ok {
+		if obj.GetGeneration() > prev.GetGeneration() {
+			o.objectPool[uid] = obj.DeepCopy()
+		}
+	}
 }
 
-func (o objectDriver) DeleteAll() {
+func (o *objectDriver) Adopt(obj *unstructured.Unstructured) error {
+	o.objectLock.Lock()
+	defer o.objectLock.Unlock()
+
+	uid := obj.GetUID()
+
+	// We can't adopt any object that hasn't come back from the
+	// API server, since it isn't a legit object until then.
+	if uid == "" {
+		return errors.New("no object UID")
+	}
+
+	// Update our adopted object only if it is from a newer generation.
+	if prev, ok := o.objectPool[uid]; ok {
+		if obj.GetGeneration() > prev.GetGeneration() {
+			o.objectPool[uid] = obj.DeepCopy()
+		}
+	} else {
+		o.objectPool[uid] = obj.DeepCopy()
+	}
+
+	return nil
+}
+
+func (o *objectDriver) DeleteAll() {
 	panic("implement me")
 }
