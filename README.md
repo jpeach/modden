@@ -16,9 +16,10 @@ for dealing with YAML and generic Kubernetes objects
     - [X] Apply uninterpreted YAML objects.
     - [ ] Reconcile (i.e. report status) for uninterpreted YAML objects.
     - [ ] Interpolate object names to ensure uniqueness for a test run.
-    - [ ] Apply objects as a patch, shorthand or template to reduce test verbosity.
+    - [X] Apply objects as a patch to reduce test verbosity.
+    - [ ] Apply objects as a shorthand or template to reduce test verbosity.
     - [X] Patch existing objects.
-    - [ ] Delete objects (by name or labels).
+    - [X] Delete objects (by name or labels).
     - [ ] Take a path to a directory of YAML objects that can be used as defaults.
 
 - Logging
@@ -28,7 +29,7 @@ for dealing with YAML and generic Kubernetes objects
 
 - HTTP queries
     - [ ] Specify sequences of HTTP requests to send.
-    - [ ] Inspect responses with Rego expressions.
+    - [X] Inspect responses with Rego expressions.
     - [ ] Use Rego query watcher API to deal with timing of responses
 
 - Quality of implementation
