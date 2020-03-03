@@ -5,9 +5,11 @@ import (
 	"log"
 	"os"
 	"path"
+	"time"
 
 	"github.com/jpeach/modden/pkg/doc"
 	"github.com/jpeach/modden/pkg/driver"
+	"github.com/jpeach/modden/pkg/must"
 
 	"github.com/fatih/color"
 	"github.com/open-policy-agent/opa/rego"
@@ -51,15 +53,15 @@ func (r *Runner) Run(testDoc *doc.Document) error {
 	cancelWatch := r.Obj.Watch(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(o interface{}) {
 			if u, ok := o.(*unstructured.Unstructured); ok {
-				storeResource(r, u)
+				must.Must(storeResource(r, u))
 			}
 		}, UpdateFunc: func(oldObj interface{}, newObj interface{}) {
 			if u, ok := newObj.(*unstructured.Unstructured); ok {
-				storeResource(r, u)
+				must.Must(storeResource(r, u))
 			}
 		}, DeleteFunc: func(o interface{}) {
 			if u, ok := o.(*unstructured.Unstructured); ok {
-				removeResource(r, u)
+				must.Must(removeResource(r, u))
 			}
 		},
 	})
@@ -113,19 +115,13 @@ func (r *Runner) Run(testDoc *doc.Document) error {
 				}
 
 				// TODO(jpeach): create an array at `/resources/applied/log` and append this.
-
-				// Also push the result into the resources hierarchy.
-				if err := storeResource(r, result.Latest); err != nil {
-					// TODO(jpeach): this should be treated as a fatal test error.
-					return err
-				}
 			}
 
 			// Now, if this object has a specific check, run it. Otherwise, we can
 			if obj.Check != nil {
-				err = runCheckWithInput(r, obj.Check, result)
+				err = runCheck(r, obj.Check, result)
 			} else {
-				err = runCheckWithInput(r, DefaultObjectCheckForOperation(obj.Operation), result)
+				err = runCheck(r, DefaultObjectCheckForOperation(obj.Operation), result)
 			}
 
 			if err != nil {
@@ -136,7 +132,7 @@ func (r *Runner) Run(testDoc *doc.Document) error {
 		case doc.FragmentTypeRego:
 			log.Printf("executing Rego fragment %d", i)
 
-			if err := runCheck(r, &p); err != nil {
+			if err := runCheck(r, &p, nil); err != nil {
 				// TODO(jpeach): this should be treated as a fatal test error.
 				return err
 			}
@@ -206,23 +202,39 @@ func printResults(resultSet []driver.CheckResult) {
 	}
 }
 
-func runCheckWithInput(r *Runner, f *doc.Fragment, in interface{}) error {
-	resultSet, err := r.Rego.Eval(f.Rego(), rego.Input(in))
-	if err != nil {
-		return err
+func runCheck(r *Runner, f *doc.Fragment, input interface{}) error {
+	var err error
+	var results []driver.CheckResult
+
+	// TODO(jpeach): this retry loop is clearly super hacky:
+	//
+	// 1. It is possible that the checks erroneously succeed on the
+	//    first pass (and would have subsequently failed).
+	// 2. Hard-coding the retries is gauche, but we could extract
+	//    that policy from the Rego document.
+	// 3. Every failure is guaranteed to hit the timeout, so failing
+	//    tests will suck.
+
+	var ops []func(*rego.Rego)
+
+	if input != nil {
+		ops = append(ops, rego.Input(input))
 	}
 
-	printResults(resultSet)
-	return err
-}
+	for tries := 10; tries > 0; tries-- {
+		results, err = r.Rego.Eval(f.Rego(), ops...)
+		if err != nil {
+			return err
+		}
 
-func runCheck(r *Runner, f *doc.Fragment) error {
-	resultSet, err := r.Rego.Eval(f.Rego())
-	if err != nil {
-		return err
+		if len(results) == 0 {
+			return nil
+		}
+
+		time.Sleep(time.Millisecond * 500)
 	}
 
-	printResults(resultSet)
+	printResults(results)
 	return err
 }
 

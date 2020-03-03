@@ -167,7 +167,6 @@ func (r *regoDriver) RemovePath(where string) error {
 	if err := r.store.Write(ctx, txn, storage.RemoveOp, storage.MustParsePath(where), nil); err != nil {
 		r.store.Abort(ctx, txn)
 		return err
-
 	}
 
 	if err := r.store.Commit(ctx, txn); err != nil {

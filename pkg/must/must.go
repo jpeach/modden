@@ -2,6 +2,13 @@ package must
 
 import "k8s.io/apimachinery/pkg/runtime/schema"
 
+// Must panics if the error is set.
+func Must(err error) {
+	if err != nil {
+		panic(err.Error())
+	}
+}
+
 // Bytes panics if the error is set, otherwise returns b.
 func Bytes(b []byte, err error) []byte {
 	if err != nil {
