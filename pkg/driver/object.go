@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/jpeach/modden/pkg/must"
+	"github.com/jpeach/modden/pkg/utils"
 	"github.com/jpeach/modden/pkg/version"
-
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -52,7 +52,7 @@ type ObjectDriver interface {
 	// DeleteAll operation.
 	Adopt(*unstructured.Unstructured) error
 
-	DeleteAll()
+	DeleteAll() error
 
 	Watch(cache.ResourceEventHandler) func()
 
@@ -362,6 +362,39 @@ func (o *objectDriver) Adopt(obj *unstructured.Unstructured) error {
 	return nil
 }
 
-func (o *objectDriver) DeleteAll() {
-	panic("implement me")
+func (o *objectDriver) DeleteAll() error {
+	targets := make([]*unstructured.Unstructured, 0, len(o.objectPool))
+	var errs []error
+
+	o.objectLock.Lock()
+	for _, u := range o.objectPool {
+		targets = append(targets, u.DeepCopy())
+	}
+	o.objectLock.Unlock()
+
+	for _, u := range targets {
+		result, err := o.Delete(u)
+
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+
+		if result.Error != nil {
+			// Re-wrap the error that we unwrapped for status!
+			errs = append(errs, &apierrors.StatusError{
+				ErrStatus: *result.Error,
+			})
+
+			continue
+		}
+	}
+
+	if len(errs) == 0 {
+		return nil
+	}
+
+	errs = append([]error{errors.New("failed to delete all objects")}, errs...)
+
+	return utils.ChainErrors(errs...)
 }

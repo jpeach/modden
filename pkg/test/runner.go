@@ -148,6 +148,7 @@ func (r *Runner) Run(testDoc *doc.Document) error {
 		}
 	}
 
+	must.Must(r.Obj.DeleteAll())
 	r.Obj.Done()
 
 	// TODO(jpeach): return a structured test result object.
