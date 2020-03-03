@@ -41,6 +41,13 @@ func (e *environ) UniqueID() string {
 	return e.uid
 }
 
+type ObjectOperationType string
+
+const (
+	ObjectOperationDelete = "delete"
+	ObjectOperationUpdate = "update"
+)
+
 // Object captures an Unstructured Kubernetes API object and its
 // associated metadata.
 //
@@ -48,10 +55,12 @@ func (e *environ) UniqueID() string {
 type Object struct {
 	// Object is the object to apply.
 	Object *unstructured.Unstructured
+
 	// Check is a Rego check to run on the apply.
 	Check *doc.Fragment
+
 	// Delete specifies whether we are updating or deleting the object.
-	Delete bool
+	Operation ObjectOperationType
 }
 
 // HydrateObject unmarshals YAML data into a unstructured.Unstructured
@@ -101,7 +110,8 @@ func (e *environ) HydrateObject(objData []byte) (*Object, error) {
 	}
 
 	o := Object{
-		Object: &unstructured.Unstructured{},
+		Object:    &unstructured.Unstructured{},
+		Operation: ObjectOperationUpdate,
 	}
 
 	// TODO(jpeach): Now that we are Unstructured, make any generic modifications.
@@ -109,10 +119,9 @@ func (e *environ) HydrateObject(objData []byte) (*Object, error) {
 		switch what {
 		case "update":
 			// This is the default.
+			o.Operation = ObjectOperationUpdate
 		case "delete":
-			o.Delete = true
-		case "patch":
-		// TODO(jpeach): apply this as a structured merge patch.
+			o.Operation = ObjectOperationDelete
 		default:
 			log.Printf("invalid object operation %q", what)
 		}

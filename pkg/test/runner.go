@@ -78,7 +78,6 @@ func (r *Runner) Run(testDoc *doc.Document) error {
 
 		switch p.Type {
 		case doc.FragmentTypeObject:
-			log.Printf("applying Kubernetes object fragment %d", i)
 
 			obj, err := r.Env.HydrateObject(p.Bytes)
 			if err != nil {
@@ -90,37 +89,43 @@ func (r *Runner) Run(testDoc *doc.Document) error {
 
 			var result *driver.OperationResult
 
-			if obj.Delete {
-
-			} else {
+			switch obj.Operation {
+			case driver.ObjectOperationUpdate:
+				log.Printf("applying Kubernetes object fragment %d", i)
 				result, err = applyObject(r, obj.Object)
-				if err != nil {
+			case driver.ObjectOperationDelete:
+				log.Printf("deleting Kubernetes object fragment %d", i)
+				result, err = r.Obj.Delete(obj.Object)
+			}
+
+			if err != nil {
+				// TODO(jpeach): this should be treated as a fatal test error.
+				log.Printf("unable to %s object: %s", obj.Operation, err)
+				return err
+			}
+
+			if result.Latest != nil {
+				// First, push the result into the store.
+				if err := storeItem(r, "/resources/applied/last",
+					result.Latest.UnstructuredContent()); err != nil {
 					// TODO(jpeach): this should be treated as a fatal test error.
-					log.Printf("unable to apply object update: %s", err)
 					return err
 				}
-			}
 
-			// First, push the result into the store.
-			if err := storeItem(r, "/resources/applied/last",
-				result.Latest.UnstructuredContent()); err != nil {
-				// TODO(jpeach): this should be treated as a fatal test error.
-				return err
-			}
+				// TODO(jpeach): create an array at `/resources/applied/log` and append this.
 
-			// TODO(jpeach): create an array at `/resources/applied/log` and append this.
-
-			// Also push the result into the resources hierarchy.
-			if err := storeResource(r, result.Latest); err != nil {
-				// TODO(jpeach): this should be treated as a fatal test error.
-				return err
+				// Also push the result into the resources hierarchy.
+				if err := storeResource(r, result.Latest); err != nil {
+					// TODO(jpeach): this should be treated as a fatal test error.
+					return err
+				}
 			}
 
 			// Now, if this object has a specific check, run it. Otherwise, we can
 			if obj.Check != nil {
 				err = runCheckWithInput(r, obj.Check, result)
 			} else {
-				err = runCheckWithInput(r, DefaultObjectUpdateCheck(), result)
+				err = runCheckWithInput(r, DefaultObjectCheckForOperation(obj.Operation), result)
 			}
 
 			if err != nil {

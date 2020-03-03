@@ -1,4 +1,4 @@
-# Default check for applying Kubernetes object updates.
+# Default check for updating Kubernetes object updates.
 
 fatal[msg] {
   input.latest != data.resources.applied.last

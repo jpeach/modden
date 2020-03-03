@@ -45,7 +45,7 @@ type ObjectDriver interface {
 	Apply(*unstructured.Unstructured) (*OperationResult, error)
 
 	// Delete deleted the specified object.
-	Delete( /* TypeMeta? */ )
+	Delete(*unstructured.Unstructured) (*OperationResult, error)
 
 	// Adopt tells the driver to take ownership of and to start tracking
 	// the specified object. Any adopted objects will be included in a
@@ -142,7 +142,7 @@ func (o *objectDriver) Watch(e cache.ResourceEventHandler) func() {
 }
 
 func (o *objectDriver) Apply(obj *unstructured.Unstructured) (*OperationResult, error) {
-	obj = obj.DeepCopy()
+	obj = obj.DeepCopy() // Copy in case we set the namespace.
 	gvk := obj.GetObjectKind().GroupVersionKind()
 
 	isNamespaced, err := o.kube.KindIsNamespaced(gvk)
@@ -259,8 +259,72 @@ func (o *objectDriver) Apply(obj *unstructured.Unstructured) (*OperationResult, 
 	return &result, nil
 }
 
-func (o *objectDriver) Delete( /* TypeMeta? */ ) {
-	panic("implement me")
+func (o *objectDriver) Delete(obj *unstructured.Unstructured) (*OperationResult, error) {
+	obj = obj.DeepCopy() // Copy in case we set the namespace.
+	gvk := obj.GetObjectKind().GroupVersionKind()
+
+	isNamespaced, err := o.kube.KindIsNamespaced(gvk)
+	if err != nil {
+		return nil, fmt.Errorf("failed check if resource kind is namespaced: %s", err)
+	}
+
+	gvr, err := o.kube.ResourceForKind(obj.GetObjectKind().GroupVersionKind())
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve resource for kind %s:%s: %s",
+			obj.GetAPIVersion(), obj.GetKind(), err)
+	}
+
+	// Default the namespace before checking the object pool.
+	if isNamespaced {
+		if ns := obj.GetNamespace(); ns == "" {
+			obj.SetNamespace("default")
+		}
+	}
+
+	result := OperationResult{
+		Error:  nil,
+		Latest: obj,
+		Target: *(&ObjectReference{}).FromUnstructured(obj),
+	}
+
+	// Scan for the latest update if we have adopted this object.
+	// The caller doesn't have to provide a complete object from
+	// the API server, so we can't match on the UID here.
+	//
+	// TODO(jpeach): maybe we should just fetch the object first?
+	o.objectLock.Lock()
+	for _, adopted := range o.objectPool {
+		if adopted.GetName() == obj.GetName() &&
+			adopted.GetNamespace() == obj.GetNamespace() &&
+			adopted.GetKind() == obj.GetKind() {
+
+			result.Latest = adopted.DeepCopy()
+			break
+		}
+	}
+	o.objectLock.Unlock()
+
+	var opts metav1.DeleteOptions
+
+	if isNamespaced {
+		err = o.kube.Dynamic.Resource(gvr).Namespace(obj.GetNamespace()).Delete(obj.GetName(), &opts)
+	} else {
+		err = o.kube.Dynamic.Resource(gvr).Delete(obj.GetName(), &opts)
+	}
+
+	switch err {
+	case nil:
+		result.Error = nil
+	default:
+		var statusError *apierrors.StatusError
+		if !errors.As(err, &statusError) {
+			return nil, fmt.Errorf("failed to apply resource: %w", err)
+		}
+
+		result.Error = &statusError.ErrStatus
+	}
+
+	return &result, nil
 }
 
 func (o *objectDriver) updateAdoptedObject(obj *unstructured.Unstructured) {
