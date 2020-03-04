@@ -18,50 +18,92 @@ import (
 	"k8s.io/client-go/tools/cache"
 )
 
-// TraceFlag specifies what tracing output to enable
-type TraceFlag int
+// RunOpt sets options for the test run.
+type RunOpt func(*testContext)
 
-const (
-	// TraceNone is the default trace type.
-	TraceNone TraceFlag = 0
-	// TraceRego enables tracing Rego execution.
-	TraceRego TraceFlag = 1 << iota
-)
+// KubeClientOpt sets the Kubernets client.
+func KubeClientOpt(kube *driver.KubeClient) RunOpt {
+	return RunOpt(func(tc *testContext) {
+		tc.kubeDriver = kube
+		tc.objectDriver = driver.NewObjectDriver(kube)
+	})
+}
 
-// Runner executes a test document with the help of a collection of drivers.
-type Runner struct {
-	Kube *driver.KubeClient
-	Env  driver.Environment
-	Obj  driver.ObjectDriver
-	Rego driver.CheckDriver
+// TraceRegoOpt enables Rego tracing.
+func TraceRegoOpt() RunOpt {
+	return RunOpt(func(tc *testContext) {
+		tc.checkDriver.Trace(driver.NewCheckTracer(os.Stdout))
+	})
+}
 
-	Trace TraceFlag
+// PreserveObjectsOpt disables automatic object deletion.
+func PreserveObjectsOpt() RunOpt {
+	return RunOpt(func(tc *testContext) {
+		tc.preserve = true
+	})
+}
+
+// DryRunOpt enables Kuberentes dry-run mode (TODO).
+func DryRunOpt() RunOpt {
+	return RunOpt(func(tc *testContext) {
+		tc.dryRun = true
+	})
+}
+
+// CheckTimeoutOpt sets the check timeout.
+func CheckTimeoutOpt(timeout time.Duration) RunOpt {
+	return RunOpt(func(tc *testContext) {
+		tc.checkTimeout = timeout
+	})
+}
+
+type testContext struct {
+	kubeDriver   *driver.KubeClient
+	objectDriver driver.ObjectDriver
+	checkDriver  driver.CheckDriver
+	envDriver    driver.Environment
+
+	dryRun       bool
+	preserve     bool
+	checkTimeout time.Duration
 }
 
 // Run executes a test document.
 //
 // nolint(gocognit)
-func (r *Runner) Run(testDoc *doc.Document) error {
-	if (r.Trace & TraceRego) != 0 {
-		r.Rego.Trace(driver.NewCheckTracer(os.Stdout))
+func Run(testDoc *doc.Document, opts ...RunOpt) error {
+	tc := testContext{
+		envDriver:    driver.NewEnvironment(),
+		checkDriver:  driver.NewRegoDriver(),
+		checkTimeout: time.Second * 10,
 	}
+
+	for _, o := range opts {
+		o(&tc)
+	}
+
+	if tc.objectDriver == nil {
+		return fmt.Errorf("missing Kubernetes object driver")
+	}
+
+	defer tc.objectDriver.Done()
 
 	// Start receiving Kubernetes objects and adding them to the
 	// store. We currently don't need any locking around this since
 	// the Rego store is transactional and this path doesn't touch
 	// any other shared data.
-	cancelWatch := r.Obj.Watch(cache.ResourceEventHandlerFuncs{
+	cancelWatch := tc.objectDriver.Watch(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(o interface{}) {
 			if u, ok := o.(*unstructured.Unstructured); ok {
-				must.Must(storeResource(r, u))
+				must.Must(storeResource(tc.kubeDriver, tc.checkDriver, u))
 			}
 		}, UpdateFunc: func(oldObj interface{}, newObj interface{}) {
 			if u, ok := newObj.(*unstructured.Unstructured); ok {
-				must.Must(storeResource(r, u))
+				must.Must(storeResource(tc.kubeDriver, tc.checkDriver, u))
 			}
 		}, DeleteFunc: func(o interface{}) {
 			if u, ok := o.(*unstructured.Unstructured); ok {
-				must.Must(removeResource(r, u))
+				must.Must(removeResource(tc.kubeDriver, tc.checkDriver, u))
 			}
 		},
 	})
@@ -80,8 +122,7 @@ func (r *Runner) Run(testDoc *doc.Document) error {
 
 		switch p.Type {
 		case doc.FragmentTypeObject:
-
-			obj, err := r.Env.HydrateObject(p.Bytes)
+			obj, err := tc.envDriver.HydrateObject(p.Bytes)
 			if err != nil {
 				// TODO(jpeach): attach error to
 				// step. This is a fatal error, so we
@@ -94,10 +135,10 @@ func (r *Runner) Run(testDoc *doc.Document) error {
 			switch obj.Operation {
 			case driver.ObjectOperationUpdate:
 				log.Printf("applying Kubernetes object fragment %d", i)
-				result, err = applyObject(r, obj.Object)
+				result, err = applyObject(tc.kubeDriver, tc.objectDriver, obj.Object)
 			case driver.ObjectOperationDelete:
 				log.Printf("deleting Kubernetes object fragment %d", i)
-				result, err = r.Obj.Delete(obj.Object)
+				result, err = tc.objectDriver.Delete(obj.Object)
 			}
 
 			if err != nil {
@@ -108,7 +149,7 @@ func (r *Runner) Run(testDoc *doc.Document) error {
 
 			if result.Latest != nil {
 				// First, push the result into the store.
-				if err := storeItem(r, "/resources/applied/last",
+				if err := storeItem(tc.checkDriver, "/resources/applied/last",
 					result.Latest.UnstructuredContent()); err != nil {
 					// TODO(jpeach): this should be treated as a fatal test error.
 					return err
@@ -118,13 +159,11 @@ func (r *Runner) Run(testDoc *doc.Document) error {
 			}
 
 			// Now, if this object has a specific check, run it. Otherwise, we can
-			if obj.Check != nil {
-				err = runCheck(r, obj.Check, result)
-			} else {
-				err = runCheck(r, DefaultObjectCheckForOperation(obj.Operation), result)
+			if obj.Check == nil {
+				obj.Check = DefaultObjectCheckForOperation(obj.Operation)
 			}
 
-			if err != nil {
+			if err := runCheck(tc.checkDriver, obj.Check, tc.checkTimeout, result); err != nil {
 				// TODO(jpeach): this should be treated as a fatal test error.
 				log.Printf("%s", err)
 			}
@@ -132,7 +171,7 @@ func (r *Runner) Run(testDoc *doc.Document) error {
 		case doc.FragmentTypeRego:
 			log.Printf("executing Rego fragment %d", i)
 
-			if err := runCheck(r, &p, nil); err != nil {
+			if err := runCheck(tc.checkDriver, &p, tc.checkTimeout, nil); err != nil {
 				// TODO(jpeach): this should be treated as a fatal test error.
 				return err
 			}
@@ -148,17 +187,20 @@ func (r *Runner) Run(testDoc *doc.Document) error {
 		}
 	}
 
-	must.Must(r.Obj.DeleteAll())
-	r.Obj.Done()
+	if !tc.preserve {
+		must.Must(tc.objectDriver.DeleteAll())
+	}
 
 	// TODO(jpeach): return a structured test result object.
 	return nil
 }
 
-func applyObject(r *Runner, u *unstructured.Unstructured) (*driver.OperationResult, error) {
+func applyObject(k *driver.KubeClient,
+	o driver.ObjectDriver,
+	u *unstructured.Unstructured) (*driver.OperationResult, error) {
 	// Implicitly create the object namespace to reduce test document boilerplate.
 	if nsName := u.GetNamespace(); nsName != "" {
-		exists, err := r.Kube.NamespaceExists(nsName)
+		exists, err := k.NamespaceExists(nsName)
 		if err != nil {
 			return nil, fmt.Errorf(
 				"failed check for namespace '%s': %s", nsName, err)
@@ -174,7 +216,7 @@ func applyObject(r *Runner, u *unstructured.Unstructured) (*driver.OperationResu
 			// Since we are creating the namespace
 			// implicitly, we know to expect that
 			// the creating should succeed.
-			result, err := r.Obj.Apply(nsObject)
+			result, err := o.Apply(nsObject)
 			if err != nil {
 				return nil, fmt.Errorf(
 					"failed to create implicit namespace %q: %w", nsName, err)
@@ -186,7 +228,7 @@ func applyObject(r *Runner, u *unstructured.Unstructured) (*driver.OperationResu
 		}
 	}
 
-	return r.Obj.Apply(u)
+	return o.Apply(u)
 }
 
 func printResults(resultSet []driver.CheckResult) {
@@ -203,27 +245,20 @@ func printResults(resultSet []driver.CheckResult) {
 	}
 }
 
-func runCheck(r *Runner, f *doc.Fragment, input interface{}) error {
+func runCheck(c driver.CheckDriver, f *doc.Fragment, timeout time.Duration, input interface{}) error {
 	var err error
 	var results []driver.CheckResult
-
-	// TODO(jpeach): this retry loop is clearly super hacky:
-	//
-	// 1. It is possible that the checks erroneously succeed on the
-	//    first pass (and would have subsequently failed).
-	// 2. Hard-coding the retries is gauche, but we could extract
-	//    that policy from the Rego document.
-	// 3. Every failure is guaranteed to hit the timeout, so failing
-	//    tests will suck.
-
 	var ops []func(*rego.Rego)
 
 	if input != nil {
 		ops = append(ops, rego.Input(input))
 	}
 
-	for tries := 10; tries > 0; tries-- {
-		results, err = r.Rego.Eval(f.Rego(), ops...)
+	startTime := time.Now()
+
+	for time.Since(startTime) < timeout {
+
+		results, err = c.Eval(f.Rego(), ops...)
 		if err != nil {
 			return err
 		}
@@ -256,15 +291,15 @@ func pathForResource(resource string, u *unstructured.Unstructured) string {
 // data document. If we get a NotFound error when we store the resource,
 // that means that an intermediate path element doesn't exist. In that
 // case, we create the path and retry.
-func storeItem(r *Runner, where string, what interface{}) error {
-	err := r.Rego.StoreItem(where, what)
+func storeItem(c driver.CheckDriver, where string, what interface{}) error {
+	err := c.StoreItem(where, what)
 	if storage.IsNotFound(err) {
-		err = r.Rego.StorePath(where)
+		err = c.StorePath(where)
 		if err != nil {
 			return err
 		}
 
-		err = r.Rego.StoreItem(where, what)
+		err = c.StoreItem(where, what)
 	}
 
 	return err
@@ -272,8 +307,8 @@ func storeItem(r *Runner, where string, what interface{}) error {
 
 // storeResource stores a Kubernetes object in the resources hierarchy
 // of the Rego data document.
-func storeResource(r *Runner, u *unstructured.Unstructured) error {
-	gvr, err := r.Kube.ResourceForKind(u.GetObjectKind().GroupVersionKind())
+func storeResource(k *driver.KubeClient, c driver.CheckDriver, u *unstructured.Unstructured) error {
+	gvr, err := k.ResourceForKind(u.GetObjectKind().GroupVersionKind())
 	if err != nil {
 		return err
 	}
@@ -281,16 +316,16 @@ func storeResource(r *Runner, u *unstructured.Unstructured) error {
 	// NOTE(jpeach): we have to marshall the inner object into
 	// the store because we don't want the resource enclosed in
 	// a dictionary with the key "Object".
-	return storeItem(r, pathForResource(gvr.Resource, u), u.UnstructuredContent())
+	return storeItem(c, pathForResource(gvr.Resource, u), u.UnstructuredContent())
 }
 
 // removeResource removes a Kubernetes object from the resources hierarchy
 // of the Rego data document.
-func removeResource(r *Runner, u *unstructured.Unstructured) error {
-	gvr, err := r.Kube.ResourceForKind(u.GetObjectKind().GroupVersionKind())
+func removeResource(k *driver.KubeClient, c driver.CheckDriver, u *unstructured.Unstructured) error {
+	gvr, err := k.ResourceForKind(u.GetObjectKind().GroupVersionKind())
 	if err != nil {
 		return err
 	}
 
-	return r.Rego.RemovePath(pathForResource(gvr.Resource, u))
+	return c.RemovePath(pathForResource(gvr.Resource, u))
 }

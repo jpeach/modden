@@ -41,10 +41,15 @@ func (e *environ) UniqueID() string {
 	return e.uid
 }
 
+// ObjectOperationType desscribes the type of operation to apply
+// to this object. This is derived from the "$apply" pseudo-field.
 type ObjectOperationType string
 
 const (
+	// ObjectOperationDelete indicates this object should be deleted.
 	ObjectOperationDelete = "delete"
+	// ObjectOperationUpdate indicates this object should be
+	// updated (i.e created or patched).
 	ObjectOperationUpdate = "update"
 )
 

@@ -4,10 +4,14 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"time"
 
 	"github.com/jpeach/modden/pkg/doc"
 	"github.com/jpeach/modden/pkg/driver"
+	"github.com/jpeach/modden/pkg/must"
 	"github.com/jpeach/modden/pkg/test"
+	"github.com/jpeach/modden/pkg/utils"
+
 	"github.com/spf13/cobra"
 )
 
@@ -15,23 +19,52 @@ import (
 func NewRunCommand() *cobra.Command {
 	run := &cobra.Command{
 		Use:   "run",
-		Short: "A brief description of your command",
-		Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
+		Short: "Run a set of test documents",
+		Long: `Execute a set of test documents given as arguments.
 
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+Test documents are ordered fragments of YAML object and Rego checks,
+separated by the YAML document separator, '---'. The fragments in
+the test document are executed sequentially.
+
+If a Kubernetes object specifies a target namespace in its metadata,
+modden will implicitly create and manage that namespace. This reduces
+test verbosity be not requiring namespace YAML fragments.
+
+When modden creates Kubernetes objects, it uses the current default
+Kubernetes client context. Each Kubernetes object it creates is labeled
+with the 'app.kubernetes.io/managed-by=modden' label. Objects are also
+annotated with a unique test run ID under the key 'modden/run-id'
+
+Unless the '--preserve' flag is specified, modden will automatically
+delete all the Kubernetes objects it created at the end of each test.
+
+Since both Kubernetes and the services in a cluster are eventually
+consistent, checks are executed repeatedly until they succeed or
+until the timeout given by the '--check-timeout' flag expires.
+`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			traceFlags, err := makeTraceFlags(cmd)
-			if err != nil {
-				// TODO(jpeach): return an EX_USAGE error.
-				return err
-			}
+			traceFlags := strings.Split(must.String(cmd.Flags().GetString("trace")), ",")
 
 			kube, err := driver.NewKubeClient()
 			if err != nil {
 				return fmt.Errorf("failed to initialize Kubernetes context: %s", err)
+			}
+
+			opts := []test.RunOpt{
+				test.KubeClientOpt(kube),
+				test.CheckTimeoutOpt(must.Duration(cmd.Flags().GetDuration("check-timeout"))),
+			}
+
+			if must.Bool(cmd.Flags().GetBool("preserve")) {
+				opts = append(opts, test.PreserveObjectsOpt())
+			}
+
+			if must.Bool(cmd.Flags().GetBool("dry-run")) {
+				opts = append(opts, test.DryRunOpt())
+			}
+
+			if utils.ContainsString(traceFlags, "rego") {
+				opts = append(opts, test.TraceRegoOpt())
 			}
 
 			// TODO(jpeach): set user agent from program version.
@@ -72,15 +105,7 @@ to quickly create a Cobra application.`,
 					return err
 				}
 
-				r := test.Runner{
-					Kube:  kube,
-					Env:   driver.NewEnvironment(),
-					Obj:   driver.NewObjectDriver(kube),
-					Rego:  driver.NewRegoDriver(),
-					Trace: traceFlags,
-				}
-
-				if err := r.Run(testDoc); err != nil {
+				if err := test.Run(testDoc, opts...); err != nil {
 					return fmt.Errorf("test run failed: %s", err)
 				}
 			}
@@ -90,30 +115,9 @@ to quickly create a Cobra application.`,
 	}
 
 	run.Flags().String("trace", "", "Set execution tracing flags")
+	run.Flags().Bool("preserve", false, "Don't automatically delete Kubernetes objects")
+	run.Flags().Bool("dry-run", false, "Don't actually create Kubernetes objects")
+	run.Flags().Duration("check-timeout", time.Second*30, "Timeout for evaluating check steps")
 
 	return CommandWithDefaults(run)
-}
-
-func makeTraceFlags(cmd *cobra.Command) (test.TraceFlag, error) {
-	flags := test.TraceNone
-
-	strVal, err := cmd.Flags().GetString("trace")
-	if err != nil {
-		return flags, err
-	}
-
-	if strVal == "" {
-		return flags, nil
-	}
-
-	for _, name := range strings.Split(strVal, ",") {
-		switch name {
-		case "rego":
-			flags |= test.TraceRego
-		default:
-			return flags, fmt.Errorf("%s is not a valid trace flag", name)
-		}
-	}
-
-	return flags, nil
 }

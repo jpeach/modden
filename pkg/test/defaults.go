@@ -7,8 +7,8 @@ import (
 	"github.com/jpeach/modden/pkg/must"
 )
 
-// DefaultObjectUpdateCheck returns a built-in default check for applying
-// Kubernetes objects.
+// DefaultObjectCheckForOperation returns a built-in default check
+// for applying Kubernetes objects.
 func DefaultObjectCheckForOperation(op driver.ObjectOperationType) *doc.Fragment {
 	var data []byte
 

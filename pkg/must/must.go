@@ -1,6 +1,10 @@
 package must
 
-import "k8s.io/apimachinery/pkg/runtime/schema"
+import (
+	"time"
+
+	"k8s.io/apimachinery/pkg/runtime/schema"
+)
 
 // Must panics if the error is set.
 func Must(err error) {
@@ -16,6 +20,24 @@ func Bytes(b []byte, err error) []byte {
 	}
 
 	return b
+}
+
+// Bool panics if the error is set, otherwise returns b.
+func Bool(b bool, err error) bool {
+	if err != nil {
+		panic(err.Error())
+	}
+
+	return b
+}
+
+// Duration panics if the error is set, otherwise returns d.
+func Duration(d time.Duration, err error) time.Duration {
+	if err != nil {
+		panic(err.Error())
+	}
+
+	return d
 }
 
 // GroupVersion panics if the error is set, otherwise returns b.
