@@ -174,27 +174,39 @@ func (f *Fragment) Decode() (FragmentType, error) {
 			)
 	}
 
-	if m, err := decodeModule(f.Bytes); err == nil {
-		// Rego will parse raw JSON and YAML, but in that
-		// case there won't be a any rules in the module.
-		if len(m.Rules) > 0 {
-			// Compile the fragment so that we can
-			// report syntax errors to the caller early.
-			if err := regoModuleCompile(m); err != nil {
-				return FragmentTypeInvalid,
-					utils.ChainErrors(
-						&InvalidFragmentErr{Type: FragmentTypeRego},
-						err,
-					)
-			}
+	// At this point, we don't strictly know that this fragment
+	// should decode to Rego. However, if we don't assume that,
+	// then we can't know whether to propagate Rego syntax errors.
+	// Since we do want to propagate errors so that users can debug
+	// scripts, we have to assume this is meant to be Rego.
 
-			f.Type = FragmentTypeRego
-			f.module = m
-			return f.Type, nil
-		}
+	m, err := decodeModule(f.Bytes)
+	if err != nil {
+		return FragmentTypeInvalid,
+			utils.ChainErrors(
+				&InvalidFragmentErr{Type: FragmentTypeRego}, err,
+			)
 	}
 
-	return FragmentTypeUnknown, nil
+	// Rego will parse raw JSON and YAML, but in that
+	// case there won't be a any rules in the module.
+	if len(m.Rules) == 0 {
+		return FragmentTypeUnknown, nil
+	}
+
+	// Compile the fragment so that we can
+	// report syntax errors to the caller early.
+	if err := regoModuleCompile(m); err != nil {
+		return FragmentTypeInvalid,
+			utils.ChainErrors(
+				&InvalidFragmentErr{Type: FragmentTypeRego},
+				err,
+			)
+	}
+
+	f.Type = FragmentTypeRego
+	f.module = m
+	return f.Type, nil
 }
 
 // NewRegoFragment decodes the given data and returns a new Fragment

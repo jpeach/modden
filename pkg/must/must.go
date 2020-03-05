@@ -13,6 +13,14 @@ func Must(err error) {
 	}
 }
 
+// Check panics if b is false. This is similar to Bool, but intended for
+// use by runtime checks, rather than by functions that return (bool, error).
+func Check(b bool, err error) {
+	if !b {
+		panic(err.Error())
+	}
+}
+
 // Bytes panics if the error is set, otherwise returns b.
 func Bytes(b []byte, err error) []byte {
 	if err != nil {

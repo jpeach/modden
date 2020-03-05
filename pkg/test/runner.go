@@ -2,7 +2,6 @@ package test
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"path"
 	"time"
@@ -21,11 +20,18 @@ import (
 // RunOpt sets options for the test run.
 type RunOpt func(*testContext)
 
-// KubeClientOpt sets the Kubernets client.
+// KubeClientOpt sets the Kubernetes client.
 func KubeClientOpt(kube *driver.KubeClient) RunOpt {
 	return RunOpt(func(tc *testContext) {
 		tc.kubeDriver = kube
 		tc.objectDriver = driver.NewObjectDriver(kube)
+	})
+}
+
+// RecorderOpt sets the test recorder.
+func RecorderOpt(r *Recorder) RunOpt {
+	return RunOpt(func(tc *testContext) {
+		tc.recorder = r
 	})
 }
 
@@ -62,6 +68,7 @@ type testContext struct {
 	objectDriver driver.ObjectDriver
 	checkDriver  driver.CheckDriver
 	envDriver    driver.Environment
+	recorder     *Recorder
 
 	dryRun       bool
 	preserve     bool
@@ -111,6 +118,10 @@ func Run(testDoc *doc.Document, opts ...RunOpt) error {
 	defer cancelWatch()
 
 	for i, p := range testDoc.Parts {
+		if !tc.recorder.ShouldContinue() {
+			break
+		}
+
 		// TODO(jpeach): this is a step, record actions, errors, results.
 
 		// TODO(jpeach): if there are any pending fatal
@@ -122,62 +133,81 @@ func Run(testDoc *doc.Document, opts ...RunOpt) error {
 
 		switch p.Type {
 		case doc.FragmentTypeObject:
+			stepCloser := tc.recorder.NewStep("hydrating Kubernetes object")
+
 			obj, err := tc.envDriver.HydrateObject(p.Bytes)
 			if err != nil {
-				// TODO(jpeach): attach error to
-				// step. This is a fatal error, so we
-				// can't continue test execution.
-				return fmt.Errorf("failed to hydrate object: %s", err)
+				tc.recorder.Errorf(SeverityFatal, "failed to hydrate object: %s", err)
+				stepCloser.Close()
+				break
 			}
+
+			stepCloser.Close()
 
 			var result *driver.OperationResult
 
+			stepCloser = tc.recorder.NewStep(
+				fmt.Sprintf("%s operation for Kubernetes object fragment %d", obj.Operation, i))
+
 			switch obj.Operation {
 			case driver.ObjectOperationUpdate:
-				log.Printf("applying Kubernetes object fragment %d", i)
 				result, err = applyObject(tc.kubeDriver, tc.objectDriver, obj.Object)
 			case driver.ObjectOperationDelete:
-				log.Printf("deleting Kubernetes object fragment %d", i)
 				result, err = tc.objectDriver.Delete(obj.Object)
 			}
 
 			if err != nil {
 				// TODO(jpeach): this should be treated as a fatal test error.
-				log.Printf("unable to %s object: %s", obj.Operation, err)
-				return err
+				tc.recorder.Errorf(SeverityFatal, "unable to %s object: %s", obj.Operation, err)
+				stepCloser.Close()
+				break
 			}
 
 			if result.Latest != nil {
 				// First, push the result into the store.
 				if err := storeItem(tc.checkDriver, "/resources/applied/last",
 					result.Latest.UnstructuredContent()); err != nil {
-					// TODO(jpeach): this should be treated as a fatal test error.
-					return err
+					tc.recorder.Errorf(SeverityFatal, "failed to store result: %s", err)
+					stepCloser.Close()
+					break
 				}
 
 				// TODO(jpeach): create an array at `/resources/applied/log` and append this.
 			}
+
+			stepCloser.Close()
+
+			stepCloser = tc.recorder.NewStep(fmt.Sprintf(
+				"checking %s operation", obj.Operation))
 
 			// Now, if this object has a specific check, run it. Otherwise, we can
 			if obj.Check == nil {
 				obj.Check = DefaultObjectCheckForOperation(obj.Operation)
 			}
 
-			if err := runCheck(tc.checkDriver, obj.Check, tc.checkTimeout, result); err != nil {
-				// TODO(jpeach): this should be treated as a fatal test error.
-				log.Printf("%s", err)
+			checkResults, err := runCheck(tc.checkDriver, obj.Check, tc.checkTimeout, result)
+			if err != nil {
+				tc.recorder.Errorf(SeverityFatal, "%s", err)
 			}
+
+			recordResults(tc.recorder, checkResults)
+			stepCloser.Close()
 
 		case doc.FragmentTypeRego:
-			log.Printf("executing Rego fragment %d", i)
 
-			if err := runCheck(tc.checkDriver, &p, tc.checkTimeout, nil); err != nil {
-				// TODO(jpeach): this should be treated as a fatal test error.
-				return err
+			stepCloser := tc.recorder.NewStep(fmt.Sprintf(
+				"executing Rego check fragment %d", i))
+
+			checkResults, err := runCheck(tc.checkDriver, &p, tc.checkTimeout, nil)
+			if err != nil {
+				tc.recorder.Errorf(SeverityFatal, "%s", err)
 			}
 
+			recordResults(tc.recorder, checkResults)
+			stepCloser.Close()
+
 		case doc.FragmentTypeUnknown:
-			log.Printf("ignoring unknown fragment %d", i)
+			tc.recorder.Messagef("ignoring unknown fragment %d", i)
 
 		case doc.FragmentTypeInvalid:
 			// XXX(jpeach): We can't get here because
@@ -245,7 +275,17 @@ func printResults(resultSet []driver.CheckResult) {
 	}
 }
 
-func runCheck(c driver.CheckDriver, f *doc.Fragment, timeout time.Duration, input interface{}) error {
+func recordResults(recorder *Recorder, resultSet []driver.CheckResult) {
+	for _, r := range resultSet {
+		recorder.Errorf(Severity(r.Severity), "%s", r.Message)
+	}
+}
+
+func runCheck(
+	c driver.CheckDriver,
+	f *doc.Fragment,
+	timeout time.Duration,
+	input interface{}) ([]driver.CheckResult, error) {
 	var err error
 	var results []driver.CheckResult
 	var ops []func(*rego.Rego)
@@ -260,18 +300,18 @@ func runCheck(c driver.CheckDriver, f *doc.Fragment, timeout time.Duration, inpu
 
 		results, err = c.Eval(f.Rego(), ops...)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		if len(results) == 0 {
-			return nil
+			return nil, nil
 		}
 
 		time.Sleep(time.Millisecond * 500)
 	}
 
 	printResults(results)
-	return err
+	return results, err
 }
 
 // Resources in the default namespace are stored as:

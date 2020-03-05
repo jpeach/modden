@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
@@ -50,8 +49,10 @@ until the timeout given by the '--check-timeout' flag expires.
 				return fmt.Errorf("failed to initialize Kubernetes context: %s", err)
 			}
 
+			recorder := test.Recorder{}
 			opts := []test.RunOpt{
 				test.KubeClientOpt(kube),
+				test.RecorderOpt(&recorder),
 				test.CheckTimeoutOpt(must.Duration(cmd.Flags().GetDuration("check-timeout"))),
 			}
 
@@ -70,44 +71,22 @@ until the timeout given by the '--check-timeout' flag expires.
 			// TODO(jpeach): set user agent from program version.
 			kube.SetUserAgent("modden/TODO")
 
-			for _, a := range args {
-				testDoc, err := doc.ReadFile(a)
-				if err != nil {
-					return err
-				}
+			for _, path := range args {
+				docCloser := recorder.NewDocument(path)
+				testDoc := validateDocument(path, &recorder)
 
-				log.Printf("reading document with %d parts from %s",
-					len(testDoc.Parts), a)
-
-				// Before executing anything, verify that we can decode all the
-				// fragments and raise any syntax errors.
-				for i := range testDoc.Parts {
-					p := &testDoc.Parts[i]
-
-					fragType, err := p.Decode()
-					if err == nil {
-						log.Printf("decoded fragment %d as %s", i, fragType)
-						continue
+				if recorder.ShouldContinue() {
+					if err := test.Run(testDoc, opts...); err != nil {
+						return fmt.Errorf("failed to run tests: %s", err)
 					}
-
-					log.Printf("error on %s fragment %d: %s", fragType, i, err)
-
-					// If we have a compile error, puke it.
-					if err := doc.AsRegoCompilationErr(err); err != nil {
-						// TODO(jpeach): rewrite the location
-						// of the Rego error. The line number
-						// will be relative to the start of the
-						// fragment, and we should make it
-						// relative to the start of the document.
-						return err
-					}
-
-					return err
 				}
 
-				if err := test.Run(testDoc, opts...); err != nil {
-					return fmt.Errorf("test run failed: %s", err)
-				}
+				docCloser.Close()
+			}
+
+			if recorder.Failed() {
+				// TODO(jpeach) format error count
+				return fmt.Errorf("test run failed")
 			}
 
 			return nil
@@ -120,4 +99,39 @@ until the timeout given by the '--check-timeout' flag expires.
 	run.Flags().Duration("check-timeout", time.Second*30, "Timeout for evaluating check steps")
 
 	return CommandWithDefaults(run)
+}
+
+func validateDocument(path string, r *test.Recorder) *doc.Document {
+	stepCloser := r.NewStep(fmt.Sprintf("validating document %q", path))
+	defer stepCloser.Close()
+
+	r.Messagef("reading document from %s", path)
+
+	testDoc, err := doc.ReadFile(path)
+	if err != nil {
+		r.Errorf(test.SeverityFatal, "%s", err.Error())
+		return nil
+	}
+
+	r.Messagef("decoding document with %d parts from %s", len(testDoc.Parts), path)
+
+	// Before executing anything, verify that we can decode all the
+	// fragments and raise any syntax errors.
+	for i := range testDoc.Parts {
+		part := &testDoc.Parts[i]
+		fragType, err := part.Decode()
+		switch err {
+		case nil:
+			r.Messagef("decoded fragment %d as %s", i, fragType)
+		default:
+			if err := doc.AsRegoCompilationErr(err); err != nil {
+				r.Errorf(test.SeverityFatal, "%s", err.Error())
+			} else {
+
+				r.Errorf(test.SeverityFatal, "%s", err.Error())
+			}
+		}
+	}
+
+	return testDoc
 }
