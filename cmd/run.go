@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -86,8 +87,7 @@ until the timeout given by the '--check-timeout' flag expires.
 			}
 
 			if recorder.Failed() {
-				// TODO(jpeach) format error count
-				return fmt.Errorf("test run failed")
+				os.Exit(EX_FAIL)
 			}
 
 			return nil
@@ -123,7 +123,7 @@ func validateDocument(path string, r test.Recorder) *doc.Document {
 		fragType, err := part.Decode()
 		switch err {
 		case nil:
-			r.Messagef("decoded fragment %d as %s", i, fragType)
+			r.Messagef("decoded part %d as %s", i, fragType)
 		default:
 			if err := doc.AsRegoCompilationErr(err); err != nil {
 				r.Errorf(test.SeverityFatal, "%s", err.Error())

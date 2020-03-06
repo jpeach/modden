@@ -102,9 +102,6 @@ func (e *environ) HydrateObject(objData []byte) (*Object, error) {
 		id.Namespace = "default"
 	}
 
-	log.Printf("fragment contains %s:%s object %s/%s",
-		id.APIVersion, id.Kind, id.Namespace, id.Name)
-
 	// TODO(jpeach): Now apply kustomizations. If this is a
 	// fragment rather than a whole object document, then we
 	// need to expand it before parsing.

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
 	"strings"
 
 	"github.com/open-policy-agent/opa/ast"
@@ -191,9 +190,6 @@ func (r *regoDriver) Eval(m *ast.Module, opts ...func(*rego.Rego)) ([]CheckResul
 		// the literal package name of the module in the query
 		// context so names resolve correctly.
 		pkg := strings.TrimPrefix(m.Package.Path.String(), "data.")
-
-		log.Printf("evaluating query %q with package %q",
-			queryForRuleName(name), pkg)
 
 		regoObj := rego.New(
 			// Scope the query to the current module package.

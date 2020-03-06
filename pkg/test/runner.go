@@ -9,6 +9,7 @@ import (
 	"github.com/jpeach/modden/pkg/doc"
 	"github.com/jpeach/modden/pkg/driver"
 	"github.com/jpeach/modden/pkg/must"
+	"github.com/jpeach/modden/pkg/utils"
 
 	"github.com/fatih/color"
 	"github.com/open-policy-agent/opa/rego"
@@ -142,12 +143,22 @@ func Run(testDoc *doc.Document, opts ...RunOpt) error {
 				break
 			}
 
+			tc.recorder.Messagef("hydrated %s:%s object '%s/%s'",
+				obj.Object.GetAPIVersion(),
+				obj.Object.GetKind(),
+				utils.NamespaceOrDefault(obj.Object),
+				obj.Object.GetName())
+
 			stepCloser.Close()
 
 			var result *driver.OperationResult
 
 			stepCloser = tc.recorder.NewStep(
-				fmt.Sprintf("%s operation for Kubernetes object fragment %d", obj.Operation, i))
+				fmt.Sprintf("performing %s on %s '%s/%s'", obj.Operation,
+					obj.Object.GetKind(),
+					utils.NamespaceOrDefault(obj.Object),
+					obj.Object.GetName()),
+			)
 
 			switch obj.Operation {
 			case driver.ObjectOperationUpdate:
@@ -207,7 +218,7 @@ func Run(testDoc *doc.Document, opts ...RunOpt) error {
 			stepCloser.Close()
 
 		case doc.FragmentTypeUnknown:
-			tc.recorder.Messagef("ignoring unknown fragment %d", i)
+			// Ignore unknown fragments.
 
 		case doc.FragmentTypeInvalid:
 			// XXX(jpeach): We can't get here because
