@@ -65,3 +65,12 @@ func String(s string, err error) string {
 
 	return s
 }
+
+// Int panics if the error is set, otherwise returns i.
+func Int(i int, err error) int {
+	if err != nil {
+		panic(err.Error())
+	}
+
+	return i
+}

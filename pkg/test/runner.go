@@ -29,7 +29,7 @@ func KubeClientOpt(kube *driver.KubeClient) RunOpt {
 }
 
 // RecorderOpt sets the test recorder.
-func RecorderOpt(r *Recorder) RunOpt {
+func RecorderOpt(r Recorder) RunOpt {
 	return RunOpt(func(tc *testContext) {
 		tc.recorder = r
 	})
@@ -68,7 +68,7 @@ type testContext struct {
 	objectDriver driver.ObjectDriver
 	checkDriver  driver.CheckDriver
 	envDriver    driver.Environment
-	recorder     *Recorder
+	recorder     Recorder
 
 	dryRun       bool
 	preserve     bool
@@ -275,7 +275,7 @@ func printResults(resultSet []driver.CheckResult) {
 	}
 }
 
-func recordResults(recorder *Recorder, resultSet []driver.CheckResult) {
+func recordResults(recorder Recorder, resultSet []driver.CheckResult) {
 	for _, r := range resultSet {
 		recorder.Errorf(Severity(r.Severity), "%s", r.Message)
 	}

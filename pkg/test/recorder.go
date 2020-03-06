@@ -2,8 +2,6 @@ package test
 
 import (
 	"fmt"
-	"log"
-	"strings"
 	"time"
 
 	"github.com/jpeach/modden/pkg/must"
@@ -85,22 +83,41 @@ type Closer interface {
 	Close()
 }
 
-// CloserFunc is a Closer adaptor.
+// CloserFunc is a Closer adaptor. This adaptor can be used with nil function pointers.
 type CloserFunc func()
 
 // Close implements Closer.
 func (c CloserFunc) Close() {
-	c()
+	if c != nil {
+		c()
+	}
 }
 
-// Recorder records test execution actions.
-type Recorder struct {
+// Recorder is an object that records structured test information.
+type Recorder interface {
+	// ShouldContinue returns whether a test harness should
+	// continue to run tests. Typically, this will return false
+	// if a fatal test error has been reported.
+	ShouldContinue() bool
+
+	// Failed returns true if any errors have been reported.
+	Failed() bool
+	NewDocument(desc string) Closer
+	NewStep(desc string) Closer
+	Messagef(format string, args ...interface{})
+	Errorf(severity Severity, format string, args ...interface{})
+}
+
+type defaultRecorder struct {
 	docs []*Document
 
 	sink        []*MessageSink
 	currentDoc  *Document
 	currentStep *Step
 }
+
+// DefaultRecorder ...
+var DefaultRecorder Recorder = &defaultRecorder{}
 
 func push(s *MessageSink, stack []*MessageSink) []*MessageSink {
 	return append([]*MessageSink{s}, stack...)
@@ -111,7 +128,7 @@ func pop(stack []*MessageSink) []*MessageSink {
 }
 
 // ShouldContinue returns false if any fatal errors have been recorded.
-func (r *Recorder) ShouldContinue() bool {
+func (r *defaultRecorder) ShouldContinue() bool {
 	count := 0
 
 	// Make the check context-dependent. If we are in the middle
@@ -134,7 +151,7 @@ func (r *Recorder) ShouldContinue() bool {
 }
 
 // Failed returns true if any errors have been recorded.
-func (r *Recorder) Failed() bool {
+func (r *defaultRecorder) Failed() bool {
 	failed := false
 
 	for _, d := range r.docs {
@@ -150,7 +167,7 @@ func (r *Recorder) Failed() bool {
 }
 
 // NewDocument creates a new Document and makes it current.
-func (r *Recorder) NewDocument(desc string) Closer {
+func (r *defaultRecorder) NewDocument(desc string) Closer {
 	must.Check(r.currentStep == nil,
 		fmt.Errorf("can't create a new doc with an open step"))
 
@@ -160,7 +177,6 @@ func (r *Recorder) NewDocument(desc string) Closer {
 	r.docs = append(r.docs, doc)
 	r.sink = push(&doc.MessageSink, r.sink)
 
-	log.Printf("Document Start: %s", desc)
 	return CloserFunc(func() {
 		must.Check(r.currentDoc == doc,
 			fmt.Errorf("overlapping docs"))
@@ -169,13 +185,12 @@ func (r *Recorder) NewDocument(desc string) Closer {
 
 		r.sink = pop(r.sink)
 		r.currentDoc = nil
-		log.Printf("Document End: %s", desc)
 	})
 }
 
 // NewStep creates a new Step within the current Document and makes
 // that the current Step.
-func (r *Recorder) NewStep(desc string) Closer {
+func (r *defaultRecorder) NewStep(desc string) Closer {
 	must.Check(r.currentDoc != nil,
 		fmt.Errorf("no open document"))
 
@@ -188,7 +203,6 @@ func (r *Recorder) NewStep(desc string) Closer {
 	r.currentDoc.Steps = append(r.currentDoc.Steps, step)
 	r.sink = push(&step.MessageSink, r.sink)
 
-	log.Printf("Step Start: %s", desc)
 	return CloserFunc(func() {
 		must.Check(r.currentStep == step,
 			fmt.Errorf("overlapping steps"))
@@ -197,23 +211,18 @@ func (r *Recorder) NewStep(desc string) Closer {
 
 		r.sink = pop(r.sink)
 		r.currentStep = nil
-
-		log.Printf("Step End: %s", desc)
 	})
 }
 
 // Messagef records a message to the current message sink (i.e. Step or Document).
-func (r *Recorder) Messagef(format string, args ...interface{}) {
-	log.Printf(format, args...)
+func (r *defaultRecorder) Messagef(format string, args ...interface{}) {
 	r.sink[0].Messages = append(r.sink[0].Messages, Messagef(format, args...))
 }
 
 // Errorf records a test error to the current Step.
-func (r *Recorder) Errorf(severity Severity, format string, args ...interface{}) {
+func (r *defaultRecorder) Errorf(severity Severity, format string, args ...interface{}) {
 	must.Check(r.currentStep != nil,
 		fmt.Errorf("no open step"))
-
-	log.Printf(strings.ToUpper(string(severity))+": "+format, args...)
 
 	r.currentStep.Errors = append(r.currentStep.Errors, Error{
 		Severity: severity,

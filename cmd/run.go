@@ -49,10 +49,11 @@ until the timeout given by the '--check-timeout' flag expires.
 				return fmt.Errorf("failed to initialize Kubernetes context: %s", err)
 			}
 
-			recorder := test.Recorder{}
+			recorder := test.StackRecorders(&test.TreeWriter{}, test.DefaultRecorder)
+
 			opts := []test.RunOpt{
 				test.KubeClientOpt(kube),
-				test.RecorderOpt(&recorder),
+				test.RecorderOpt(recorder),
 				test.CheckTimeoutOpt(must.Duration(cmd.Flags().GetDuration("check-timeout"))),
 			}
 
@@ -73,7 +74,7 @@ until the timeout given by the '--check-timeout' flag expires.
 
 			for _, path := range args {
 				docCloser := recorder.NewDocument(path)
-				testDoc := validateDocument(path, &recorder)
+				testDoc := validateDocument(path, recorder)
 
 				if recorder.ShouldContinue() {
 					if err := test.Run(testDoc, opts...); err != nil {
@@ -101,7 +102,7 @@ until the timeout given by the '--check-timeout' flag expires.
 	return CommandWithDefaults(run)
 }
 
-func validateDocument(path string, r *test.Recorder) *doc.Document {
+func validateDocument(path string, r test.Recorder) *doc.Document {
 	stepCloser := r.NewStep(fmt.Sprintf("validating document %q", path))
 	defer stepCloser.Close()
 
