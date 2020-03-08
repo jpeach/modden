@@ -5,10 +5,10 @@ import (
 	"log"
 
 	"github.com/jpeach/modden/pkg/doc"
+	"github.com/jpeach/modden/pkg/filter"
 	"github.com/jpeach/modden/pkg/version"
 
 	"github.com/google/uuid"
-
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	yamlutil "k8s.io/apimachinery/pkg/util/yaml"
 	"sigs.k8s.io/kustomize/kyaml/yaml"
@@ -79,7 +79,7 @@ func (e *environ) HydrateObject(objData []byte) (*Object, error) {
 	}
 
 	// Filter out any special operations.
-	ops := SpecialOpsFilter{}
+	ops := filter.SpecialOpsFilter{}
 	resource, err = resource.Pipe(&ops)
 	if err != nil {
 		return nil, err
@@ -87,7 +87,7 @@ func (e *environ) HydrateObject(objData []byte) (*Object, error) {
 
 	// Inject test metadata.
 	resource, err = resource.Pipe(
-		&MetaInjectionFilter{RunID: e.UniqueID(), ManagedBy: version.Progname})
+		&filter.MetaInjectionFilter{RunID: e.UniqueID(), ManagedBy: version.Progname})
 	if err != nil {
 		return nil, err
 	}

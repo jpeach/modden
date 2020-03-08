@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log"
 
+	"github.com/jpeach/modden/pkg/filter"
 	"github.com/jpeach/modden/pkg/must"
 	"github.com/jpeach/modden/pkg/utils"
 
@@ -159,7 +160,7 @@ func (k *KubeClient) SelectObjectsByLabel(label string, value string) ([]*unstru
 // is no run ID, it returns "".
 func (k *KubeClient) RunIDFor(u *unstructured.Unstructured) (string, error) {
 	for k, v := range u.GetAnnotations() {
-		if k == LabelRunID {
+		if k == filter.LabelRunID {
 			return v, nil
 		}
 	}

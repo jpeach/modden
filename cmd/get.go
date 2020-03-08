@@ -6,12 +6,12 @@ import (
 	"strings"
 
 	"github.com/jpeach/modden/pkg/driver"
+	"github.com/jpeach/modden/pkg/filter"
 	"github.com/jpeach/modden/pkg/must"
 	"github.com/jpeach/modden/pkg/version"
 
 	"github.com/gosuri/uitable"
 	"github.com/spf13/cobra"
-
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/duration"
 )
@@ -34,14 +34,14 @@ func NewGetCommand() *cobra.Command {
 This command lists Kubernetes API objects that are labeled as managed
 by modden. modden labels objects created or modified by test documents
 with the %s%s%s label.`,
-			"`", driver.LabelManagedBy, "`"),
+			"`", filter.LabelManagedBy, "`"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			kube, err := driver.NewKubeClient()
 			if err != nil {
 				return fmt.Errorf("failed to initialize Kubernetes context: %s", err)
 			}
 
-			results, err := kube.SelectObjectsByLabel(driver.LabelManagedBy, version.Progname)
+			results, err := kube.SelectObjectsByLabel(filter.LabelManagedBy, version.Progname)
 			if err != nil {
 				log.Printf("%s", err)
 				return err

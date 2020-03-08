@@ -6,9 +6,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jpeach/modden/pkg/filter"
 	"github.com/jpeach/modden/pkg/must"
 	"github.com/jpeach/modden/pkg/utils"
 	"github.com/jpeach/modden/pkg/version"
+
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -61,7 +63,7 @@ type ObjectDriver interface {
 
 // NewObjectDriver returns a new ObjectDriver.
 func NewObjectDriver(client *KubeClient) ObjectDriver {
-	selector := labels.SelectorFromSet(labels.Set{LabelManagedBy: version.Progname}).String()
+	selector := labels.SelectorFromSet(labels.Set{filter.LabelManagedBy: version.Progname}).String()
 
 	factory := dynamicinformer.NewFilteredDynamicSharedInformerFactory(
 		client.Dynamic,
