@@ -122,9 +122,6 @@ error[msg] {
   msg := sprintf("invalid status: %s", [p.status.description])
 }
 
-fatal[msg] {
-  msg = "this is a really really bad"
-}
 ---
 # TODO(jpeach): take this from params or the "echo" Service
 ip := "127.0.0.1"
