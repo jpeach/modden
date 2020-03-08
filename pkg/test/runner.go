@@ -11,7 +11,6 @@ import (
 	"github.com/jpeach/modden/pkg/must"
 	"github.com/jpeach/modden/pkg/utils"
 
-	"github.com/fatih/color"
 	"github.com/open-policy-agent/opa/rego"
 	"github.com/open-policy-agent/opa/storage"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -62,6 +61,18 @@ func CheckTimeoutOpt(timeout time.Duration) RunOpt {
 	return RunOpt(func(tc *testContext) {
 		tc.checkTimeout = timeout
 	})
+}
+
+func step(tc Recorder, stepDesc string, f func()) {
+	stepCloser := tc.NewStep(stepDesc)
+	defer stepCloser.Close()
+
+	if !tc.ShouldContinue() {
+		tc.Errorf(SeverityError, "skipping")
+		return
+	}
+
+	f()
 }
 
 type testContext struct {
@@ -118,7 +129,7 @@ func Run(testDoc *doc.Document, opts ...RunOpt) error {
 
 	defer cancelWatch()
 
-	for i, p := range testDoc.Parts {
+	for _, p := range testDoc.Parts {
 		if !tc.recorder.ShouldContinue() {
 			break
 		}
@@ -134,88 +145,86 @@ func Run(testDoc *doc.Document, opts ...RunOpt) error {
 
 		switch p.Type {
 		case doc.FragmentTypeObject:
-			stepCloser := tc.recorder.NewStep("hydrating Kubernetes object")
-
-			obj, err := tc.envDriver.HydrateObject(p.Bytes)
-			if err != nil {
-				tc.recorder.Errorf(SeverityFatal, "failed to hydrate object: %s", err)
-				stepCloser.Close()
-				break
-			}
-
-			tc.recorder.Messagef("hydrated %s:%s object '%s/%s'",
-				obj.Object.GetAPIVersion(),
-				obj.Object.GetKind(),
-				utils.NamespaceOrDefault(obj.Object),
-				obj.Object.GetName())
-
-			stepCloser.Close()
-
+			var err error
+			var obj *driver.Object
 			var result *driver.OperationResult
 
-			stepCloser = tc.recorder.NewStep(
-				fmt.Sprintf("performing %s on %s '%s/%s'", obj.Operation,
-					obj.Object.GetKind(),
-					utils.NamespaceOrDefault(obj.Object),
-					obj.Object.GetName()),
-			)
-
-			switch obj.Operation {
-			case driver.ObjectOperationUpdate:
-				result, err = applyObject(tc.kubeDriver, tc.objectDriver, obj.Object)
-			case driver.ObjectOperationDelete:
-				result, err = tc.objectDriver.Delete(obj.Object)
-			}
-
-			if err != nil {
-				// TODO(jpeach): this should be treated as a fatal test error.
-				tc.recorder.Errorf(SeverityFatal, "unable to %s object: %s", obj.Operation, err)
-				stepCloser.Close()
-				break
-			}
-
-			if result.Latest != nil {
-				// First, push the result into the store.
-				if err := storeItem(tc.checkDriver, "/resources/applied/last",
-					result.Latest.UnstructuredContent()); err != nil {
-					tc.recorder.Errorf(SeverityFatal, "failed to store result: %s", err)
-					stepCloser.Close()
-					break
+			step(tc.recorder, "hydrating Kubernetes object", func() {
+				obj, err = tc.envDriver.HydrateObject(p.Bytes)
+				if err != nil {
+					tc.recorder.Errorf(SeverityFatal, "failed to hydrate object: %s", err)
+					return
 				}
 
-				// TODO(jpeach): create an array at `/resources/applied/log` and append this.
-			}
+				tc.recorder.Messagef("hydrated %s:%s object '%s/%s'",
+					obj.Object.GetAPIVersion(),
+					obj.Object.GetKind(),
+					utils.NamespaceOrDefault(obj.Object),
+					obj.Object.GetName())
+			})
 
-			stepCloser.Close()
+			step(tc.recorder, "updating Kubernetes object", func() {
+				tc.recorder.Messagef("performing %s on %s '%s/%s'",
+					obj.Operation,
+					obj.Object.GetKind(),
+					utils.NamespaceOrDefault(obj.Object),
+					obj.Object.GetName())
 
-			stepCloser = tc.recorder.NewStep(fmt.Sprintf(
-				"checking %s operation", obj.Operation))
+				switch obj.Operation {
+				case driver.ObjectOperationUpdate:
+					result, err = applyObject(tc.kubeDriver, tc.objectDriver, obj.Object)
+				case driver.ObjectOperationDelete:
+					result, err = tc.objectDriver.Delete(obj.Object)
+				}
 
-			// Now, if this object has a specific check, run it. Otherwise, we can
-			if obj.Check == nil {
-				obj.Check = DefaultObjectCheckForOperation(obj.Operation)
-			}
+				if err != nil {
+					// TODO(jpeach): this should be treated as a fatal test error.
+					tc.recorder.Errorf(SeverityFatal, "unable to %s object: %s", obj.Operation, err)
+					return
+				}
 
-			checkResults, err := runCheck(tc.checkDriver, obj.Check, tc.checkTimeout, result)
-			if err != nil {
-				tc.recorder.Errorf(SeverityFatal, "%s", err)
-			}
+				if result.Latest != nil {
+					// First, push the result into the store.
+					if err := storeItem(tc.checkDriver, "/resources/applied/last",
+						result.Latest.UnstructuredContent()); err != nil {
+						tc.recorder.Errorf(SeverityFatal, "failed to store result: %s", err)
+						return
+					}
 
-			recordResults(tc.recorder, checkResults)
-			stepCloser.Close()
+					// TODO(jpeach): create an array at `/resources/applied/log` and append this.
+				}
+			})
+
+			step(tc.recorder, "running object update check", func() {
+				tc.recorder.Messagef("checking %s of %s '%s/%s'",
+					obj.Operation,
+					obj.Object.GetKind(),
+					utils.NamespaceOrDefault(obj.Object),
+					obj.Object.GetName())
+
+				// Now, if this object has a specific check, run it. Otherwise, we can
+				if obj.Check == nil {
+					obj.Check = DefaultObjectCheckForOperation(obj.Operation)
+				}
+
+				checkResults, err := runCheck(tc.checkDriver, obj.Check, tc.checkTimeout, result)
+				if err != nil {
+					tc.recorder.Errorf(SeverityFatal, "%s", err)
+				}
+
+				recordResults(tc.recorder, checkResults)
+			})
 
 		case doc.FragmentTypeRego:
 
-			stepCloser := tc.recorder.NewStep(fmt.Sprintf(
-				"executing Rego check fragment %d", i))
+			step(tc.recorder, "running Rego check", func() {
+				checkResults, err := runCheck(tc.checkDriver, &p, tc.checkTimeout, nil)
+				if err != nil {
+					tc.recorder.Errorf(SeverityFatal, "%s", err)
+				}
 
-			checkResults, err := runCheck(tc.checkDriver, &p, tc.checkTimeout, nil)
-			if err != nil {
-				tc.recorder.Errorf(SeverityFatal, "%s", err)
-			}
-
-			recordResults(tc.recorder, checkResults)
-			stepCloser.Close()
+				recordResults(tc.recorder, checkResults)
+			})
 
 		case doc.FragmentTypeUnknown:
 			// Ignore unknown fragments.
@@ -272,20 +281,6 @@ func applyObject(k *driver.KubeClient,
 	return o.Apply(u)
 }
 
-func printResults(resultSet []driver.CheckResult) {
-	colors := map[driver.Severity]func(string, ...interface{}){
-		driver.SeverityNone:  nil,
-		driver.SeverityWarn:  color.Yellow,
-		driver.SeverityError: color.Red,
-		driver.SeverityFatal: color.HiMagenta,
-	}
-
-	for _, r := range resultSet {
-		// TODO(jpeach): convert to test result and propagate.
-		colors[r.Severity]("%s: %s", r.Severity, r.Message)
-	}
-}
-
 func recordResults(recorder Recorder, resultSet []driver.CheckResult) {
 	for _, r := range resultSet {
 		recorder.Errorf(Severity(r.Severity), "%s", r.Message)
@@ -321,7 +316,6 @@ func runCheck(
 		time.Sleep(time.Millisecond * 500)
 	}
 
-	printResults(results)
 	return results, err
 }
 
