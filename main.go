@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"math/rand"
@@ -16,8 +17,15 @@ func main() {
 	rand.Seed(time.Now().UnixNano())
 
 	if err := cmd.NewRootCommand().Execute(); err != nil {
-		// TODO(jpeach): fish the exit code out of the error type.
-		fmt.Fprintf(os.Stderr, "%s: %s\n", version.Progname, err)
-		os.Exit(cmd.EX_FAIL)
+		if msg := err.Error(); msg != "" {
+			fmt.Fprintf(os.Stderr, "%s: %s\n", version.Progname, msg)
+		}
+
+		var exit *cmd.ExitError
+		if errors.As(err, &exit) {
+			os.Exit(int(exit.Code))
+		}
+
+		os.Exit(int(cmd.EX_FAIL))
 	}
 }

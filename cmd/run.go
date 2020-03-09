@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -58,6 +57,10 @@ can be provided multiple times to specify additional resource types
 to monitor and publish.
 `,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 0 {
+				return ExitErrorf(EX_USAGE, "no test file(s)")
+			}
+
 			return runCmd(cmd, args)
 		},
 	}
@@ -138,7 +141,7 @@ func runCmd(cmd *cobra.Command, args []string) error {
 	}
 
 	if recorder.Failed() {
-		os.Exit(EX_FAIL)
+		return ExitError{Code: EX_FAIL}
 	}
 
 	return nil

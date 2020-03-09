@@ -8,14 +8,38 @@ import (
 	"github.com/spf13/cobra"
 )
 
+type ExitCode int
+
 const (
 	// EX_FAIL is an exit code indicating an unspecified error.
-	EX_FAIL = 1 //nolint(golint)
+	EX_FAIL ExitCode = 1 //nolint(golint)
+
 	// EX_USAGE is an exit code indicating invalid invocation syntax.
-	EX_USAGE = 65 //nolint(golint)
+	EX_USAGE ExitCode = 65 //nolint(golint)
+
 	// EX_NOINPUT is an exit code indicating missing input data.
-	EX_NOINPUT = 66 //nolint(golint)
+	EX_NOINPUT ExitCode = 66 //nolint(golint)
 )
+
+type ExitError struct {
+	Code ExitCode
+	Err  error
+}
+
+func (e ExitError) Error() string {
+	if e.Err != nil {
+		return e.Err.Error()
+	}
+
+	return ""
+}
+
+func ExitErrorf(code ExitCode, format string, args ...interface{}) error {
+	return &ExitError{
+		Code: code,
+		Err:  fmt.Errorf(format, args...),
+	}
+}
 
 // CommandWithDefaults overwrites default values in the given command.
 func CommandWithDefaults(c *cobra.Command) *cobra.Command {
