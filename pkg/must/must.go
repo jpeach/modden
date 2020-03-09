@@ -66,6 +66,15 @@ func String(s string, err error) string {
 	return s
 }
 
+// StringSlice panics if the error is set, otherwise returns s.
+func StringSlice(s []string, err error) []string {
+	if err != nil {
+		panic(err.Error())
+	}
+
+	return s
+}
+
 // Int panics if the error is set, otherwise returns i.
 func Int(i int, err error) int {
 	if err != nil {

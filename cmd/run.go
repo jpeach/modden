@@ -46,9 +46,19 @@ delete all the Kubernetes objects it created at the end of each test.
 Since both Kubernetes and the services in a cluster are eventually
 consistent, checks are executed repeatedly until they succeed or
 until the timeout given by the '--check-timeout' flag expires.
+
+The '--param' flag can be provided multiple times to add an element
+to the Rego data store. The argument to this flag is a "key=value"
+pair. The value is stored as 'data.test.params.key'.
 `,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			traceFlags := strings.Split(must.String(cmd.Flags().GetString("trace")), ",")
+
+			paramOpts, err := validateParams(
+				must.StringSlice(cmd.Flags().GetStringArray("param")))
+			if err != nil {
+				return err
+			}
 
 			kube, err := driver.NewKubeClient()
 			if err != nil {
@@ -62,6 +72,8 @@ until the timeout given by the '--check-timeout' flag expires.
 				test.RecorderOpt(recorder),
 				test.CheckTimeoutOpt(must.Duration(cmd.Flags().GetDuration("check-timeout"))),
 			}
+
+			opts = append(opts, paramOpts...)
 
 			if must.Bool(cmd.Flags().GetBool("preserve")) {
 				opts = append(opts, test.PreserveObjectsOpt())
@@ -103,8 +115,24 @@ until the timeout given by the '--check-timeout' flag expires.
 	run.Flags().Bool("preserve", false, "Don't automatically delete Kubernetes objects")
 	run.Flags().Bool("dry-run", false, "Don't actually create Kubernetes objects")
 	run.Flags().Duration("check-timeout", time.Second*30, "Timeout for evaluating check steps")
+	run.Flags().StringArray("param", []string{}, "Additional Rego parameter(s) in key=value format")
 
 	return CommandWithDefaults(run)
+}
+
+func validateParams(params []string) ([]test.RunOpt, error) {
+	opts := []test.RunOpt{}
+
+	for _, p := range params {
+		parts := strings.SplitN(p, "=", 2)
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("missing value for parameter %q", parts[0])
+		}
+
+		opts = append(opts, test.RegoParamOpt(parts[0], parts[1]))
+	}
+
+	return opts, nil
 }
 
 func validateDocument(path string, r test.Recorder) *doc.Document {

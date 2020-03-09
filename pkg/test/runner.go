@@ -43,6 +43,16 @@ func TraceRegoOpt() RunOpt {
 	})
 }
 
+// RegoParamOpt writes a parameter into the Rego store, rooted at
+// the path `/test/params`.
+func RegoParamOpt(key string, val string) RunOpt {
+	return RunOpt(func(tc *testContext) {
+		p := path.Join("/", "test", "params", key)
+		must.Must(tc.checkDriver.StorePath(p))
+		must.Must(tc.checkDriver.StoreItem(p, val))
+	})
+}
+
 // PreserveObjectsOpt disables automatic object deletion.
 func PreserveObjectsOpt() RunOpt {
 	return RunOpt(func(tc *testContext) {
