@@ -103,6 +103,36 @@ func (k *KubeClient) ResourceForKind(kind schema.GroupVersionKind) (schema.Group
 	}, nil
 }
 
+// ResourcesForName returns the possible set of schema.GroupVersionResource
+// corresponding to the given resource name.
+func (k *KubeClient) ResourcesForName(name string) ([]schema.GroupVersionResource, error) {
+	_, apiResources, err := k.Discovery.ServerGroupsAndResources()
+	if err != nil {
+		return nil, err
+	}
+
+	var matched []schema.GroupVersionResource
+
+	for _, res := range apiResources {
+		gv := must.GroupVersion(schema.ParseGroupVersion(res.GroupVersion))
+		for _, r := range res.APIResources {
+			if r.Name != name {
+				continue
+			}
+
+			gvr := schema.GroupVersionResource{
+				Group:    gv.Group,
+				Version:  gv.Version,
+				Resource: r.Name,
+			}
+
+			matched = append(matched, gvr)
+		}
+	}
+
+	return matched, nil
+}
+
 // SelectObjects lists the objects matching the given kind and selector.
 func (k *KubeClient) SelectObjects(kind schema.GroupVersionKind, selector labels.Selector) (
 	[]*unstructured.Unstructured, error) {

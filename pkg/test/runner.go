@@ -15,6 +15,7 @@ import (
 	"github.com/open-policy-agent/opa/rego"
 	"github.com/open-policy-agent/opa/storage"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/tools/cache"
 )
 
@@ -60,6 +61,13 @@ func PreserveObjectsOpt() RunOpt {
 	})
 }
 
+// WatchResourceOpt disables automatic object deletion.
+func WatchResourceOpt(gvr schema.GroupVersionResource) RunOpt {
+	return RunOpt(func(tc *testContext) {
+		tc.watchedResources = append(tc.watchedResources, gvr)
+	})
+}
+
 // DryRunOpt enables Kuberentes dry-run mode (TODO).
 func DryRunOpt() RunOpt {
 	return RunOpt(func(tc *testContext) {
@@ -93,9 +101,10 @@ type testContext struct {
 	envDriver    driver.Environment
 	recorder     Recorder
 
-	dryRun       bool
-	preserve     bool
-	checkTimeout time.Duration
+	dryRun           bool
+	preserve         bool
+	checkTimeout     time.Duration
+	watchedResources []schema.GroupVersionResource
 }
 
 // Run executes a test document.
@@ -139,6 +148,12 @@ func Run(testDoc *doc.Document, opts ...RunOpt) error {
 	})
 
 	defer cancelWatch()
+
+	for _, gvr := range tc.watchedResources {
+		tc.objectDriver.InformOn(gvr)
+	}
+
+	tc.checkDriver.StoreItem("/test/params/run-id", tc.envDriver.UniqueID())
 
 	for _, p := range testDoc.Parts {
 		if !tc.recorder.ShouldContinue() {

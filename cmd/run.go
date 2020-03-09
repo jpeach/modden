@@ -50,64 +50,15 @@ until the timeout given by the '--check-timeout' flag expires.
 The '--param' flag can be provided multiple times to add an element
 to the Rego data store. The argument to this flag is a "key=value"
 pair. The value is stored as 'data.test.params.key'.
+
+Modden will automatically watch resource types that are created in
+a test document and publish them into Rego checks in the 'data.resources'
+tree. If a test needs to inspect more resources, the '--watch' flag
+can be provided multiple times to specify additional resource types
+to monitor and publish.
 `,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			traceFlags := strings.Split(must.String(cmd.Flags().GetString("trace")), ",")
-
-			paramOpts, err := validateParams(
-				must.StringSlice(cmd.Flags().GetStringArray("param")))
-			if err != nil {
-				return err
-			}
-
-			kube, err := driver.NewKubeClient()
-			if err != nil {
-				return fmt.Errorf("failed to initialize Kubernetes context: %s", err)
-			}
-
-			recorder := test.StackRecorders(&test.TreeWriter{}, test.DefaultRecorder)
-
-			opts := []test.RunOpt{
-				test.KubeClientOpt(kube),
-				test.RecorderOpt(recorder),
-				test.CheckTimeoutOpt(must.Duration(cmd.Flags().GetDuration("check-timeout"))),
-			}
-
-			opts = append(opts, paramOpts...)
-
-			if must.Bool(cmd.Flags().GetBool("preserve")) {
-				opts = append(opts, test.PreserveObjectsOpt())
-			}
-
-			if must.Bool(cmd.Flags().GetBool("dry-run")) {
-				opts = append(opts, test.DryRunOpt())
-			}
-
-			if utils.ContainsString(traceFlags, "rego") {
-				opts = append(opts, test.TraceRegoOpt())
-			}
-
-			// TODO(jpeach): set user agent from program version.
-			kube.SetUserAgent("modden/TODO")
-
-			for _, path := range args {
-				docCloser := recorder.NewDocument(path)
-				testDoc := validateDocument(path, recorder)
-
-				if recorder.ShouldContinue() {
-					if err := test.Run(testDoc, opts...); err != nil {
-						return fmt.Errorf("failed to run tests: %s", err)
-					}
-				}
-
-				docCloser.Close()
-			}
-
-			if recorder.Failed() {
-				os.Exit(EX_FAIL)
-			}
-
-			return nil
+			return runCmd(cmd, args)
 		},
 	}
 
@@ -116,8 +67,81 @@ pair. The value is stored as 'data.test.params.key'.
 	run.Flags().Bool("dry-run", false, "Don't actually create Kubernetes objects")
 	run.Flags().Duration("check-timeout", time.Second*30, "Timeout for evaluating check steps")
 	run.Flags().StringArray("param", []string{}, "Additional Rego parameter(s) in key=value format")
+	run.Flags().StringSlice("watch", []string{}, "Additional Kubernetes resources to monitor")
 
 	return CommandWithDefaults(run)
+}
+
+func runCmd(cmd *cobra.Command, args []string) error {
+	traceFlags := strings.Split(must.String(cmd.Flags().GetString("trace")), ",")
+
+	paramOpts, err := validateParams(
+		must.StringSlice(cmd.Flags().GetStringArray("param")))
+	if err != nil {
+		return err
+	}
+
+	kube, err := driver.NewKubeClient()
+	if err != nil {
+		return fmt.Errorf("failed to initialize Kubernetes context: %s", err)
+	}
+
+	recorder := test.StackRecorders(&test.TreeWriter{}, test.DefaultRecorder)
+
+	opts := []test.RunOpt{
+		test.KubeClientOpt(kube),
+		test.RecorderOpt(recorder),
+		test.CheckTimeoutOpt(must.Duration(cmd.Flags().GetDuration("check-timeout"))),
+	}
+
+	opts = append(opts, paramOpts...)
+
+	if must.Bool(cmd.Flags().GetBool("preserve")) {
+		opts = append(opts, test.PreserveObjectsOpt())
+	}
+
+	if must.Bool(cmd.Flags().GetBool("dry-run")) {
+		opts = append(opts, test.DryRunOpt())
+	}
+
+	if utils.ContainsString(traceFlags, "rego") {
+		opts = append(opts, test.TraceRegoOpt())
+	}
+
+	if names := must.StringSlice(cmd.Flags().GetStringSlice("watch")); len(names) > 0 {
+		for _, n := range names {
+			gvrs, err := kube.ResourcesForName(n)
+			if err != nil {
+				return err
+			}
+
+			for _, gvr := range gvrs {
+				opts = append(opts, test.WatchResourceOpt(gvr))
+			}
+		}
+	}
+
+	// TODO(jpeach): set user agent from program version.
+	kube.SetUserAgent("modden/TODO")
+
+	for _, path := range args {
+		docCloser := recorder.NewDocument(path)
+		testDoc := validateDocument(path, recorder)
+
+		if recorder.ShouldContinue() {
+			if err := test.Run(testDoc, opts...); err != nil {
+				return fmt.Errorf("failed to run tests: %s", err)
+			}
+		}
+
+		docCloser.Close()
+	}
+
+	if recorder.Failed() {
+		os.Exit(EX_FAIL)
+	}
+
+	return nil
 }
 
 func validateParams(params []string) ([]test.RunOpt, error) {

@@ -54,10 +54,21 @@ type ObjectDriver interface {
 	// DeleteAll operation.
 	Adopt(*unstructured.Unstructured) error
 
+	// DeleteAll deletes all the objects that have been adopted by this driver.
 	DeleteAll() error
 
+	// InformOn establishes an informer for the given resource.
+	// Events received by this informer will be delivered to all
+	// watchers.
+	InformOn(gvr schema.GroupVersionResource) error
+
+	// Watch registers an event handler to receive events from
+	// all the informers managed by the driver.
 	Watch(cache.ResourceEventHandler) func()
 
+	// Done marks this driver session as complete. All informers
+	// are released, watchers are unregistered and adopted objects
+	// are forgotten.
 	Done()
 }
 
@@ -119,7 +130,7 @@ func (o *objectDriver) Done() {
 	o.watcherLock.Next.(*MuxingResourceEventHandler).Clear()
 	o.watcherLock.Lock.Unlock()
 
-	// Hold the object lock while we cleat the object pool.
+	// Hold the object lock while we clear the object pool.
 	o.objectLock.Lock()
 	o.objectPool = make(map[types.UID]*unstructured.Unstructured)
 	o.objectLock.Unlock()
@@ -143,6 +154,51 @@ func (o *objectDriver) Watch(e cache.ResourceEventHandler) func() {
 	}
 }
 
+func (o *objectDriver) InformOn(gvr schema.GroupVersionResource) error {
+	if _, ok := o.informerPool[gvr]; ok {
+		return nil
+	}
+
+	// If we don't already have an informer for this resource, start one now.
+	genericInformer := o.informerFactory.ForResource(gvr)
+	genericInformer.Informer().AddEventHandler(
+		&WrappingResourceEventHandlerFuncs{
+			Next: &o.watcherLock,
+			AddFunc: func(obj interface{}) {
+				o.objectLock.Lock()
+				defer o.objectLock.Unlock()
+
+				if u, ok := obj.(*unstructured.Unstructured); ok {
+					o.updateAdoptedObject(u)
+				}
+			},
+			UpdateFunc: func(oldObj, newObj interface{}) {
+				o.objectLock.Lock()
+				defer o.objectLock.Unlock()
+
+				if u, ok := newObj.(*unstructured.Unstructured); ok {
+					o.updateAdoptedObject(u)
+				}
+			},
+			DeleteFunc: func(obj interface{}) {
+				o.objectLock.Lock()
+				defer o.objectLock.Unlock()
+
+				if u, ok := obj.(*unstructured.Unstructured); ok {
+					delete(o.objectPool, u.GetUID())
+				}
+			},
+		})
+
+	o.informerPool[gvr] = genericInformer
+
+	go func() {
+		genericInformer.Informer().Run(o.informerStopper)
+	}()
+
+	return nil
+}
+
 func (o *objectDriver) Apply(obj *unstructured.Unstructured) (*OperationResult, error) {
 	obj = obj.DeepCopy() // Copy in case we set the namespace.
 	gvk := obj.GetObjectKind().GroupVersionKind()
@@ -158,43 +214,8 @@ func (o *objectDriver) Apply(obj *unstructured.Unstructured) (*OperationResult, 
 			obj.GetAPIVersion(), obj.GetKind(), err)
 	}
 
-	// If we don't already have an informer for this resource, start one now.
-	if _, ok := o.informerPool[gvr]; !ok {
-		genericInformer := o.informerFactory.ForResource(gvr)
-		genericInformer.Informer().AddEventHandler(
-			&WrappingResourceEventHandlerFuncs{
-				Next: &o.watcherLock,
-				AddFunc: func(obj interface{}) {
-					o.objectLock.Lock()
-					defer o.objectLock.Unlock()
-
-					if u, ok := obj.(*unstructured.Unstructured); ok {
-						o.updateAdoptedObject(u)
-					}
-				},
-				UpdateFunc: func(oldObj, newObj interface{}) {
-					o.objectLock.Lock()
-					defer o.objectLock.Unlock()
-
-					if u, ok := newObj.(*unstructured.Unstructured); ok {
-						o.updateAdoptedObject(u)
-					}
-				},
-				DeleteFunc: func(obj interface{}) {
-					o.objectLock.Lock()
-					defer o.objectLock.Unlock()
-
-					if u, ok := obj.(*unstructured.Unstructured); ok {
-						delete(o.objectPool, u.GetUID())
-					}
-				},
-			})
-
-		o.informerPool[gvr] = genericInformer
-
-		go func() {
-			genericInformer.Informer().Run(o.informerStopper)
-		}()
+	if err := o.InformOn(gvr); err != nil {
+		return nil, fmt.Errorf("failed to start informer for %q: %s", gvr, err)
 	}
 
 	if isNamespaced {
