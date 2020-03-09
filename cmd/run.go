@@ -18,7 +18,7 @@ import (
 // NewRunCommand returns a command ro run a test case.
 func NewRunCommand() *cobra.Command {
 	run := &cobra.Command{
-		Use:   "run",
+		Use:   "run [FLAGS ...] FILE [FILE ...]",
 		Short: "Run a set of test documents",
 		Long: `Execute a set of test documents given as arguments.
 

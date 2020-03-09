@@ -26,7 +26,7 @@ func NewGetCommand() *cobra.Command {
 	}
 
 	objects := &cobra.Command{
-		Use:   "objects",
+		Use:   "objects [FLAGS ...]",
 		Short: "Gets one Kubernetes objects",
 		Long: fmt.Sprintf(
 			`Gets Kubernetes objects managed by tests

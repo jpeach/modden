@@ -21,6 +21,7 @@ const (
 func CommandWithDefaults(c *cobra.Command) *cobra.Command {
 	c.SilenceUsage = true
 	c.SilenceErrors = true
+	c.DisableFlagsInUseLine = true
 
 	return c
 }
