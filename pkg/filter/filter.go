@@ -3,6 +3,7 @@ package filter
 import (
 	"strings"
 
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"sigs.k8s.io/kustomize/kyaml/fieldmeta"
 	"sigs.k8s.io/kustomize/kyaml/yaml"
 )
@@ -84,6 +85,20 @@ func (m *MetaInjectionFilter) Filter(rn *yaml.RNode) (*yaml.RNode, error) {
 		return nil, err
 	}
 
+	// Next, inject the management label to the template. This
+	// ensures that the management label propagates down to child
+	// objects.
+	if n, err := rn.Pipe(
+		yaml.PathGetter{Path: []string{"spec", "template", "metadata", "labels"}},
+	); err == nil && n != nil {
+		if _, err := rn.Pipe(
+			yaml.PathGetter{Path: []string{"spec", "template", "metadata", "labels"}},
+			yaml.FieldSetter{Name: "app.kubernetes.io/managed-by", StringValue: m.ManagedBy},
+		); err != nil {
+			return nil, err
+		}
+	}
+
 	// Next, label the top level with the run ID.
 	if _, err := rn.Pipe(
 		yaml.PathGetter{Create: yaml.MappingNode, Path: []string{"metadata", "annotations"}},
@@ -109,6 +124,17 @@ func (m *MetaInjectionFilter) Filter(rn *yaml.RNode) (*yaml.RNode, error) {
 
 	return rn, nil
 
+}
+
+// ObjectRunID returns the value of the LabelRunID annotation on the given object.
+func ObjectRunID(u *unstructured.Unstructured) string {
+	for key, val := range u.GetAnnotations() {
+		if key == LabelRunID {
+			return val
+		}
+	}
+
+	return ""
 }
 
 // yamlKindStr stringifies the yaml.Kind since kyaml doesn't do that for us.

@@ -79,6 +79,7 @@ spec:
     metadata:
       labels:
         app.kubernetes.io/name: httpbin
+        app.kubernetes.io/managed-by: modden
       annotations:
         modden/run-id: test-run-id
     spec:

@@ -103,6 +103,41 @@ func (k *KubeClient) ResourceForKind(kind schema.GroupVersionKind) (schema.Group
 	}, nil
 }
 
+// SelectObjects lists the objects matching the given kind and selector.
+func (k *KubeClient) SelectObjects(kind schema.GroupVersionKind, selector labels.Selector) (
+	[]*unstructured.Unstructured, error) {
+	res, err := k.findAPIResourceForKind(kind)
+	if err != nil {
+		return nil, err
+	}
+
+	r := schema.GroupVersionResource{
+		Group:    res.Group,
+		Version:  res.Version,
+		Resource: res.Name,
+	}
+
+	var results []*unstructured.Unstructured
+
+	// TODO(jpeach): set a more reasonable limit and implement Continue.
+	list, err := k.Dynamic.Resource(r).Namespace(metav1.NamespaceAll).List(
+		metav1.ListOptions{LabelSelector: selector.String(), Limit: 10000})
+
+	if apierrors.IsNotFound(err) {
+		return results, nil
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	for _, u := range list.Items {
+		results = append(results, u.DeepCopy())
+	}
+
+	return results, nil
+}
+
 // SelectObjectsByLabel lists all objects that are labeled as managed.
 func (k *KubeClient) SelectObjectsByLabel(label string, value string) ([]*unstructured.Unstructured, error) {
 	groups, err := k.Discovery.ServerPreferredResources()
@@ -136,7 +171,7 @@ func (k *KubeClient) SelectObjectsByLabel(label string, value string) ([]*unstru
 	var results []*unstructured.Unstructured
 
 	for _, r := range resources {
-		// TODO(jpeach): set a more reasonable libit and implement Continue.
+		// TODO(jpeach): set a more reasonable limit and implement Continue.
 		list, err := k.Dynamic.Resource(r).Namespace(metav1.NamespaceAll).List(
 			metav1.ListOptions{LabelSelector: selector, Limit: 10000})
 

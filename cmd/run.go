@@ -35,6 +35,11 @@ Kubernetes client context. Each Kubernetes object it creates is labeled
 with the 'app.kubernetes.io/managed-by=modden' label. Objects are also
 annotated with a unique test run ID under the key 'modden/run-id'
 
+Modden will delete the target Kubernetes object if the special '$apply'
+key has the value 'delete'. If the target object has a name, modden will
+delete that object. Otherwise, modden will attempt to select an object
+to delete by matching the run ID and any specified labels.
+
 Unless the '--preserve' flag is specified, modden will automatically
 delete all the Kubernetes objects it created at the end of each test.
 
