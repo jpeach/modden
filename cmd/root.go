@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// ExitCode is a process exit code suitable for use with os.Exit.
 type ExitCode int
 
 const (
@@ -21,6 +22,7 @@ const (
 	EX_NOINPUT ExitCode = 66 //nolint(golint)
 )
 
+// ExitError captures an ExitCode and its associated error message.
 type ExitError struct {
 	Code ExitCode
 	Err  error
@@ -34,6 +36,7 @@ func (e ExitError) Error() string {
 	return ""
 }
 
+// ExitErrorf formats and error message along with the ExitCode.
 func ExitErrorf(code ExitCode, format string, args ...interface{}) error {
 	return &ExitError{
 		Code: code,
