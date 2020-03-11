@@ -1,0 +1,25 @@
+# An example of using Kubernetes object fixtures.
+# 
+# $ modden run --fixtures ./examples/fixtures/httpbin.yaml ./examples/fixture.yaml
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: httpbin
+$apply: fixture
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: httpbin
+$apply: fixture
+
+---
+
+apiVersion: projectcontour.io/v1
+kind: HTTPProxy
+metadata:
+  name: httpbin
+$apply: fixture

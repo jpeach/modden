@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -71,12 +73,18 @@ to monitor and publish.
 	run.Flags().Duration("check-timeout", time.Second*30, "Timeout for evaluating check steps")
 	run.Flags().StringArray("param", []string{}, "Additional Rego parameter(s) in key=value format")
 	run.Flags().StringSlice("watch", []string{}, "Additional Kubernetes resources to monitor")
+	run.Flags().StringSlice("fixtures", []string{}, "Additional Kubernetes resource fixtures")
 
 	return CommandWithDefaults(run)
 }
 
 func runCmd(cmd *cobra.Command, args []string) error {
 	traceFlags := strings.Split(must.String(cmd.Flags().GetString("trace")), ",")
+
+	if err := loadFixtures(
+		must.StringSlice(cmd.Flags().GetStringSlice("fixtures"))); err != nil {
+		return ExitError{Code: EX_NOINPUT, Err: err}
+	}
 
 	paramOpts, err := validateParams(
 		must.StringSlice(cmd.Flags().GetStringArray("param")))
@@ -142,6 +150,43 @@ func runCmd(cmd *cobra.Command, args []string) error {
 
 	if recorder.Failed() {
 		return ExitError{Code: EX_FAIL}
+	}
+
+	return nil
+}
+
+func loadFixtures(paths []string) error {
+	loadPath := func(filePath string) error {
+		d, err := doc.ReadFile(filePath)
+		if err != nil {
+			return err
+		}
+
+		return driver.AddFixtures(d)
+	}
+
+	for _, p := range paths {
+		var err error
+
+		if utils.IsDirPath(p) {
+			err = filepath.Walk(p, func(path string, info os.FileInfo, err error) error {
+				if err != nil {
+					return err
+				}
+
+				if info.IsDir() {
+					return nil
+				}
+
+				return loadPath(path)
+			})
+		} else {
+			err = loadPath(p)
+		}
+
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil

@@ -51,6 +51,9 @@ const (
 	// ObjectOperationUpdate indicates this object should be
 	// updated (i.e created or patched).
 	ObjectOperationUpdate = "update"
+	// ObjectOperationFixture indicates that this object should
+	// be substituted with the matching fixture object.
+	ObjectOperationFixture = "fixture"
 )
 
 // Object captures an Unstructured Kubernetes API object and its
@@ -120,14 +123,14 @@ func (e *environ) HydrateObject(objData []byte) (*Object, error) {
 	if what, ok := ops.Ops["$apply"]; ok {
 		switch what {
 		case "update":
-			// This is the default.
 			o.Operation = ObjectOperationUpdate
 		case "delete":
 			o.Operation = ObjectOperationDelete
+		case "fixture":
+			o.Operation = ObjectOperationFixture
 		default:
 			log.Printf("invalid object operation %q", what)
 		}
-
 	}
 
 	if _, ok := ops.Ops["$check"]; ok {

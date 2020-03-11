@@ -246,7 +246,7 @@ func Run(testDoc *doc.Document, opts ...RunOpt) error {
 			}
 
 			step(tc.recorder, "updating Kubernetes object", func() {
-				tc.recorder.Messagef("performing %s on %s '%s/%s'",
+				tc.recorder.Messagef("performing %s operation on %s '%s/%s'",
 					obj.Operation,
 					obj.Object.GetKind(),
 					utils.NamespaceOrDefault(obj.Object),
@@ -257,6 +257,24 @@ func Run(testDoc *doc.Document, opts ...RunOpt) error {
 					result, err = applyObject(tc.kubeDriver, tc.objectDriver, obj.Object)
 				case driver.ObjectOperationDelete:
 					result, err = tc.objectDriver.Delete(obj.Object)
+				case driver.ObjectOperationFixture:
+					u := driver.DefaultFixtures.Match(obj.Object)
+					if u == nil {
+						tc.recorder.Errorf(SeverityFatal, "no fixture for %s '%s/%s'",
+							obj.Object.GetKind(),
+							utils.NamespaceOrDefault(obj.Object),
+							obj.Object.GetName())
+						return
+					}
+
+					tc.recorder.Messagef("found fixture for %s '%s/%s'",
+						obj.Object.GetKind(),
+						utils.NamespaceOrDefault(obj.Object),
+						obj.Object.GetName())
+
+					obj.Object = u
+					obj.Operation = driver.ObjectOperationUpdate
+					result, err = applyObject(tc.kubeDriver, tc.objectDriver, obj.Object)
 				}
 
 				if err != nil {
