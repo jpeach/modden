@@ -136,8 +136,7 @@ func (e *environ) HydrateObject(objData []byte) (*Object, error) {
 	if _, ok := ops.Ops["$check"]; ok {
 		frag, err := doc.NewRegoFragment([]byte(ops.Ops["$check"]))
 		if err != nil {
-			// TODO(jpeach): send to test listener.
-			panic(err)
+			return nil, err
 		}
 
 		o.Check = frag
