@@ -200,50 +200,52 @@ func Run(testDoc *doc.Document, opts ...RunOpt) error {
 			// may have to wait here, because the objects
 			// we want to select may not have been created
 			// yet.
-			if obj.Object.GetName() == "" {
-				step(tc.recorder, "matching anonymous Kubernetes object", func() {
-					s := utils.NewSelectorFromObject(obj.Object)
+			step(tc.recorder, "matching anonymous Kubernetes object", func() {
+				if obj.Object.GetName() != "" {
+					return
+				}
 
-					tc.recorder.Messagef("matching anonymous %s:%s object",
-						obj.Object.GetAPIVersion(), obj.Object.GetKind())
+				s := utils.NewSelectorFromObject(obj.Object)
 
-					tc.recorder.Messagef("selector %q", s.String())
+				tc.recorder.Messagef("matching anonymous %s:%s object",
+					obj.Object.GetAPIVersion(), obj.Object.GetKind())
 
-					// TODO(jpeach): select on namespace if present?
+				tc.recorder.Messagef("selector %q", s.String())
 
-					candidates, err := tc.kubeDriver.SelectObjects(
-						obj.Object.GroupVersionKind(),
-						utils.NewSelectorFromObject(obj.Object))
-					if err != nil {
-						tc.recorder.Errorf(SeverityFatal, "listing %s:%s objects: %s",
-							obj.Object.GetAPIVersion(), obj.Object.GetKind(), err)
-						return
+				// TODO(jpeach): select on namespace if present?
+
+				candidates, err := tc.kubeDriver.SelectObjects(
+					obj.Object.GroupVersionKind(),
+					utils.NewSelectorFromObject(obj.Object))
+				if err != nil {
+					tc.recorder.Errorf(SeverityFatal, "listing %s:%s objects: %s",
+						obj.Object.GetAPIVersion(), obj.Object.GetKind(), err)
+					return
+				}
+
+				var match *unstructured.Unstructured
+				for _, u := range candidates {
+					if filter.ObjectRunID(u) == tc.envDriver.UniqueID() {
+						match = u
+						break
 					}
+				}
 
-					var match *unstructured.Unstructured
-					for _, u := range candidates {
-						if filter.ObjectRunID(u) == tc.envDriver.UniqueID() {
-							match = u
-							break
-						}
-					}
+				if match == nil {
+					tc.recorder.Errorf(SeverityFatal,
+						"failed to match object with run ID %s",
+						tc.envDriver.UniqueID())
+					return
+				}
 
-					if match == nil {
-						tc.recorder.Errorf(SeverityFatal,
-							"failed to match object with run ID %s",
-							tc.envDriver.UniqueID())
-						return
-					}
+				obj.Object = match
+				tc.recorder.Messagef("matched %s:%s object '%s/%s'",
+					obj.Object.GetAPIVersion(),
+					obj.Object.GetKind(),
+					utils.NamespaceOrDefault(obj.Object),
+					obj.Object.GetName())
 
-					obj.Object = match
-					tc.recorder.Messagef("matched %s:%s object '%s/%s'",
-						obj.Object.GetAPIVersion(),
-						obj.Object.GetKind(),
-						utils.NamespaceOrDefault(obj.Object),
-						obj.Object.GetName())
-
-				})
-			}
+			})
 
 			step(tc.recorder, "updating Kubernetes object", func() {
 				tc.recorder.Messagef("performing %s operation on %s '%s/%s'",
