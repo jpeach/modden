@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"strings"
 	"time"
 
 	"github.com/jpeach/modden/pkg/doc"
@@ -45,10 +46,13 @@ func TraceRegoOpt() RunOpt {
 }
 
 // RegoParamOpt writes a parameter into the Rego store, rooted at
-// the path `/test/params`.
+// the path `/test/params`. If the parameter name contains interior
+// dots (e.g. "foo.bar.baz"), those are converted into path separators.
 func RegoParamOpt(key string, val string) RunOpt {
 	return RunOpt(func(tc *testContext) {
-		p := path.Join("/", "test", "params", key)
+		parts := []string{"/", "test", "params"}
+		parts = append(parts, strings.Split(key, ".")...)
+		p := path.Join(parts...)
 		must.Must(tc.checkDriver.StorePath(p))
 		must.Must(tc.checkDriver.StoreItem(p, val))
 	})
