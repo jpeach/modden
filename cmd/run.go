@@ -159,10 +159,14 @@ func loadFixtures(paths []string) error {
 	loadPath := func(filePath string) error {
 		d, err := doc.ReadFile(filePath)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to read %q`: %w", filePath, err)
 		}
 
-		return driver.AddFixtures(d)
+		if err := driver.AddFixtures(d); err != nil {
+			return fmt.Errorf("failed to parse %q`: %w", filePath, err)
+		}
+
+		return nil
 	}
 
 	for _, p := range paths {
