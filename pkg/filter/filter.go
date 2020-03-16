@@ -26,14 +26,22 @@ const (
 // whose name begins with `$`. These keys denote special operations
 // that test drivers need to interpolate.
 type SpecialOpsFilter struct {
-	Ops map[string]string
+	Ops map[string]interface{}
+
+	Decoders map[string]yaml.Unmarshaler
 }
 
-var _ yaml.Filter = &SpecialOpsFilter{}
+// UnmarshalFunc is a yaml.Unmarshaler adapator.
+type UnmarshalFunc func(value *yaml.Node) error
+
+// UnmarshalYAML ...
+func (u UnmarshalFunc) UnmarshalYAML(node *yaml.Node) error {
+	return u(node)
+}
 
 // Filter runs the SpecialOpsFilter.
 func (s *SpecialOpsFilter) Filter(rn *yaml.RNode) (*yaml.RNode, error) {
-	s.Ops = make(map[string]string)
+	s.Ops = make(map[string]interface{})
 	keep := make([]*yaml.Node, 0, len(rn.Content()))
 
 	// Starting as index 0, we have alternate nodes for YAML
@@ -45,15 +53,33 @@ func (s *SpecialOpsFilter) Filter(rn *yaml.RNode) (*yaml.RNode, error) {
 
 		// If the field name isn't a string, then who knows
 		// what we should do. Skip it.
-		if isStringNode(key) {
-			if strings.HasPrefix(key.Value, "$") {
-				s.Ops[key.Value] = val.Value
-				// Return early so we filter out this key and value.
-				continue
-			}
+		if !isStringNode(key) {
+			keep = append(keep, key, val)
+			continue
 		}
 
-		keep = append(keep, key, val)
+		if !strings.HasPrefix(key.Value, "$") {
+			keep = append(keep, key, val)
+			continue
+		}
+
+		d, ok := s.Decoders[key.Value]
+		if !ok {
+			d = UnmarshalFunc(func(n *yaml.Node) error {
+				var str string
+
+				if err := n.Decode(&str); err != nil {
+					return err
+				}
+
+				s.Ops[key.Value] = str
+				return nil
+			})
+		}
+
+		if err := d.UnmarshalYAML(val); err != nil {
+			return nil, err
+		}
 	}
 
 	rn.YNode().Content = keep
@@ -124,6 +150,56 @@ func (m *MetaInjectionFilter) Filter(rn *yaml.RNode) (*yaml.RNode, error) {
 
 	return rn, nil
 
+}
+
+// Rename is a filter that rewrites the name of a Kubernetes object,
+// i.e. it replaces the value of the `metadata.name` field.
+type Rename struct {
+	// Name is the new name of the object.
+	Name string
+	// Namespace is the new namespace of the object.
+	Namespace string
+}
+
+// Filter applies the rename and returns rn.
+func (r Rename) Filter(rn *yaml.RNode) (*yaml.RNode, error) {
+	setNode := func(path []string, value string) error {
+		// If there is an existing node, we will use that. This preserves anchors.
+		name, err := rn.Pipe(yaml.PathGetter{Path: path})
+		if err != nil {
+			return err
+		}
+
+		if name != nil {
+			// Only reset the value for scalar nodes. We don't want to
+			// rewrite Alias nodes because there is no way to know whether
+			// that is wanted or not.
+			if name.YNode().Kind == yaml.ScalarNode {
+				name.YNode().SetString(r.Name)
+			}
+			return nil
+		}
+
+		head := path[:len(path)-1]
+		tail := path[len(path)-1]
+		_, err = rn.Pipe(
+			yaml.PathGetter{Create: yaml.MappingNode, Path: head},
+			yaml.FieldSetter{Name: tail, StringValue: value},
+		)
+
+		return err
+
+	}
+
+	if err := setNode([]string{"metadata", "name"}, r.Name); err != nil {
+		return nil, err
+	}
+
+	if err := setNode([]string{"metadata", "namespace"}, r.Namespace); err != nil {
+		return nil, err
+	}
+
+	return rn, nil
 }
 
 // ObjectRunID returns the value of the LabelRunID annotation on the given object.

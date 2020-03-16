@@ -9,6 +9,7 @@ import (
 
 	"github.com/jpeach/modden/pkg/doc"
 	"github.com/jpeach/modden/pkg/driver"
+	"github.com/jpeach/modden/pkg/fixture"
 	"github.com/jpeach/modden/pkg/must"
 	"github.com/jpeach/modden/pkg/test"
 	"github.com/jpeach/modden/pkg/utils"
@@ -157,12 +158,7 @@ func runCmd(cmd *cobra.Command, args []string) error {
 
 func loadFixtures(paths []string) error {
 	loadPath := func(filePath string) error {
-		d, err := doc.ReadFile(filePath)
-		if err != nil {
-			return fmt.Errorf("failed to read %q`: %w", filePath, err)
-		}
-
-		if err := driver.AddFixtures(d); err != nil {
+		if err := fixture.AddFromFile(filePath); err != nil {
 			return fmt.Errorf("failed to parse %q`: %w", filePath, err)
 		}
 
@@ -237,7 +233,6 @@ func validateDocument(path string, r test.Recorder) *doc.Document {
 			if err := doc.AsRegoCompilationErr(err); err != nil {
 				r.Errorf(test.SeverityFatal, "%s", err.Error())
 			} else {
-
 				r.Errorf(test.SeverityFatal, "%s", err.Error())
 			}
 		}

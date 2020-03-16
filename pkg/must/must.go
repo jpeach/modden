@@ -3,6 +3,7 @@ package must
 import (
 	"time"
 
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
@@ -82,4 +83,13 @@ func Int(i int, err error) int {
 	}
 
 	return i
+}
+
+// Unstructured ...
+func Unstructured(u *unstructured.Unstructured, err error) *unstructured.Unstructured {
+	if err != nil {
+		panic(err.Error())
+	}
+
+	return u
 }

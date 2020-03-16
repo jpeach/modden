@@ -2,16 +2,17 @@ package driver
 
 import (
 	"fmt"
-	"log"
 
 	"github.com/jpeach/modden/pkg/doc"
 	"github.com/jpeach/modden/pkg/filter"
+	"github.com/jpeach/modden/pkg/fixture"
+	"github.com/jpeach/modden/pkg/must"
 	"github.com/jpeach/modden/pkg/version"
 
 	"github.com/google/uuid"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	yamlutil "k8s.io/apimachinery/pkg/util/yaml"
 	"sigs.k8s.io/kustomize/kyaml/yaml"
+	sigyaml "sigs.k8s.io/yaml"
 )
 
 // Environment holds metadata that describes the context of a test.
@@ -51,10 +52,13 @@ const (
 	// ObjectOperationUpdate indicates this object should be
 	// updated (i.e created or patched).
 	ObjectOperationUpdate = "update"
-	// ObjectOperationFixture indicates that this object should
-	// be substituted with the matching fixture object.
-	ObjectOperationFixture = "fixture"
 )
+
+// Fixture is a marker to tell the Environment that a Kubernetes
+// object is a fixture placeholder.
+type Fixture struct {
+	As string
+}
 
 // Object captures an Unstructured Kubernetes API object and its
 // associated metadata.
@@ -67,8 +71,35 @@ type Object struct {
 	// Check is a Rego check to run on the apply.
 	Check *doc.Fragment
 
-	// Delete specifies whether we are updating or deleting the object.
+	// Operation specifies whether we are updating or deleting the object.
 	Operation ObjectOperationType
+
+	// Fixture specifies that we should replace this object with the corresponding fixture.
+	Fixture *Fixture
+}
+
+func yamlToUnstructured(node *yaml.RNode) (*unstructured.Unstructured, error) {
+	jsonBytes, err := sigyaml.YAMLToJSON([]byte(node.MustString()))
+	if err != nil {
+		return nil, err
+	}
+
+	resource, _, err := unstructured.UnstructuredJSONScheme.Decode(jsonBytes, nil, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode JSON: %s", err)
+	}
+
+	return resource.(*unstructured.Unstructured), nil
+}
+
+func matchFixture(resource *yaml.RNode) fixture.Fixture {
+	u := must.Unstructured(yamlToUnstructured(resource))
+
+	if match := fixture.Set.Match(u); match != nil {
+		return match
+	}
+
+	return nil
 }
 
 // HydrateObject unmarshals YAML data into a unstructured.Unstructured
@@ -78,21 +109,43 @@ func (e *environ) HydrateObject(objData []byte) (*Object, error) {
 
 	resource, err := yaml.Parse(string(objData))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to parse YAML object:%w", err)
 	}
 
 	// Filter out any special operations.
-	ops := filter.SpecialOpsFilter{}
-	resource, err = resource.Pipe(&ops)
+	ops := newSpecialOpsFilter()
+
+	resource, err = resource.Pipe(ops)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("special ops filtering: %w", err)
+	}
+
+	// Before we make any modifications to the object we just
+	// parsed, check if we need to replace it with a fixture.
+	if val, ok := ops.Ops["$apply"]; ok {
+		fix, ok := val.(Fixture)
+		if ok {
+			match := matchFixture(resource)
+			if resource == nil {
+				return nil, fmt.Errorf("failed to match fixture")
+			}
+
+			if fix.As != "" {
+				match, err = match.Rename(fix.As)
+				if err != nil {
+					return nil, fmt.Errorf("failed to rename fixture object: %w", err)
+				}
+			}
+
+			resource = match.AsNode()
+		}
 	}
 
 	// Inject test metadata.
 	resource, err = resource.Pipe(
 		&filter.MetaInjectionFilter{RunID: e.UniqueID(), ManagedBy: version.Progname})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("metadata injection failed: %w", err)
 	}
 
 	meta, err := resource.GetMeta()
@@ -105,47 +158,96 @@ func (e *environ) HydrateObject(objData []byte) (*Object, error) {
 		id.Namespace = "default"
 	}
 
-	// TODO(jpeach): Now apply kustomizations. If this is a
-	// fragment rather than a whole object document, then we
-	// need to expand it before parsing.
-
-	jsonBytes, err := yamlutil.ToJSON([]byte(resource.MustString()))
-	if err != nil {
-		return nil, err
-	}
-
 	o := Object{
 		Object:    &unstructured.Unstructured{},
 		Operation: ObjectOperationUpdate,
 	}
 
-	// TODO(jpeach): Now that we are Unstructured, make any generic modifications.
-	if what, ok := ops.Ops["$apply"]; ok {
-		switch what {
-		case "update":
-			o.Operation = ObjectOperationUpdate
-		case "delete":
-			o.Operation = ObjectOperationDelete
-		case "fixture":
-			o.Operation = ObjectOperationFixture
-		default:
-			log.Printf("invalid object operation %q", what)
+	for key, handler := range specialOpHandlers {
+		what, ok := ops.Ops[key]
+		if !ok {
+			continue
 		}
-	}
 
-	if _, ok := ops.Ops["$check"]; ok {
-		frag, err := doc.NewRegoFragment([]byte(ops.Ops["$check"]))
-		if err != nil {
+		if err := handler(what, &o); err != nil {
 			return nil, err
 		}
-
-		o.Check = frag
 	}
 
-	_, _, err = unstructured.UnstructuredJSONScheme.Decode(jsonBytes, nil, o.Object)
+	o.Object, err = yamlToUnstructured(resource)
 	if err != nil {
-		return nil, fmt.Errorf("failed to decode JSON: %s", err)
+		return nil, err
 	}
 
 	return &o, nil
+}
+
+func newSpecialOpsFilter() *filter.SpecialOpsFilter {
+	// Filter out any special operations.
+	ops := filter.SpecialOpsFilter{
+		Decoders: map[string]yaml.Unmarshaler{},
+	}
+
+	ops.Decoders["$apply"] = filter.UnmarshalFunc(func(n *yaml.Node) error {
+		var as struct{ Fixture Fixture }
+		var str string
+
+		if err := n.Decode(&as); err == nil {
+			ops.Ops["$apply"] = as.Fixture
+			return nil
+		}
+
+		if err := n.Decode(&str); err == nil {
+			ops.Ops["$apply"] = str
+			return nil
+		}
+
+		return fmt.Errorf("unable to decode YAML field %q", "$apply")
+	})
+
+	return &ops
+}
+
+var specialOpHandlers = map[string]func(val interface{}, o *Object) error{
+	"$check": func(val interface{}, o *Object) error {
+		strval, ok := val.(string)
+		if !ok {
+			return fmt.Errorf(
+				"failed to decode %q field: unexpected type %T",
+				"$check", strval)
+		}
+
+		frag, err := doc.NewRegoFragment([]byte(strval))
+		if err != nil {
+			return err
+		}
+
+		o.Check = frag
+		return nil
+	},
+
+	"$apply": func(val interface{}, o *Object) error {
+		switch what := val.(type) {
+		case string:
+			switch what {
+			case "update":
+				o.Operation = ObjectOperationUpdate
+			case "delete":
+				o.Operation = ObjectOperationDelete
+			case "fixture":
+				o.Operation = ObjectOperationUpdate
+			default:
+				return fmt.Errorf(
+					"unsupported operation %q for %q field", what, "$apply")
+			}
+		case Fixture:
+			o.Operation = ObjectOperationUpdate
+		default:
+			return fmt.Errorf(
+				"failed to decode %q field: unexpected type %T",
+				"$apply", what)
+		}
+
+		return nil
+	},
 }

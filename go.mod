@@ -18,6 +18,7 @@ require (
 	k8s.io/apimachinery v0.18.0-alpha.2
 	k8s.io/client-go v0.18.0-alpha.2
 	sigs.k8s.io/kustomize/kyaml v0.0.11
+	sigs.k8s.io/yaml v1.1.0
 )
 
 replace github.com/open-policy-agent/opa => github.com/jpeach/opa v0.17.2-jpeach.1
