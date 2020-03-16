@@ -78,10 +78,27 @@ type TreeWriter struct {
 	allErrors  map[Severity]int
 }
 
+var _ Recorder = &TreeWriter{}
+
 func tabPrintf(indent int, leader string, format string, args ...interface{}) {
 	timestamp := time.Now().Format("15:04:05.0000")
 	msg := fmt.Sprintf(format, args...)
-	fmt.Printf("%s\t%s%s%s\n", timestamp, formatIndent(indent), leader, msg)
+	lines := strings.Split(msg, "\n")
+
+	for n, line := range lines {
+		// Format the leader only on the first output line,
+		// replacing it with an extra indent on subsequent
+		// lines. This makes branchLeader entries look better,
+		// but will horrendously munge elbowLeader ones (the
+		// logic needs to be reversed).
+		if n == 0 {
+			fmt.Printf("%s\t%s%s%s\n",
+				timestamp, formatIndent(indent), leader, line)
+		} else {
+			fmt.Printf("%s\t%s %s\n",
+				timestamp, formatIndent(indent+1), line)
+		}
+	}
 }
 
 // ShouldContinue ...
