@@ -58,6 +58,11 @@ a test document and publish them into Rego checks in the 'data.resources'
 tree. If a test needs to inspect more resources, the '--watch' flag
 can be provided multiple times to specify additional resource types
 to monitor and publish.
+
+The test results output format can be changed by the '--format'
+flag. The default format is 'tree', which is a custom hierarchical
+format suitable for terminals. The "tap" format emits TAP (Test
+Anything Protocol) results.
 `,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
@@ -75,6 +80,7 @@ to monitor and publish.
 	run.Flags().StringArray("param", []string{}, "Additional Rego parameter(s) in key=value format")
 	run.Flags().StringSlice("watch", []string{}, "Additional Kubernetes resources to monitor")
 	run.Flags().StringSlice("fixtures", []string{}, "Additional Kubernetes resource fixtures")
+	run.Flags().String("format", "tree", "Test results output format")
 
 	return CommandWithDefaults(run)
 }
@@ -98,7 +104,17 @@ func runCmd(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to initialize Kubernetes context: %s", err)
 	}
 
-	recorder := test.StackRecorders(&test.TreeWriter{}, test.DefaultRecorder)
+	var recorder test.Recorder
+
+	switch must.String(cmd.Flags().GetString("format")) {
+	case "tree":
+		recorder = test.StackRecorders(&test.TreeWriter{}, test.DefaultRecorder)
+	case "tap":
+		recorder = test.StackRecorders(&test.TapWriter{}, test.DefaultRecorder)
+	default:
+		return ExitErrorf(EX_USAGE, "invalid test output format %q",
+			must.String(cmd.Flags().GetString("format")))
+	}
 
 	opts := []test.RunOpt{
 		test.KubeClientOpt(kube),
