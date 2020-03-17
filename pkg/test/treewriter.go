@@ -8,6 +8,8 @@ import (
 	"github.com/jpeach/modden/pkg/must"
 )
 
+type leader string
+
 const (
 	// Fixed-width boxing characters.
 	boxBranch   = "├─"
@@ -16,8 +18,9 @@ const (
 
 	// tabPrintf leaders are boxing characters with a bit of
 	// fixed breathing space.
-	branchLeader = boxBranch + " "
-	elbowLeader  = boxLeft + " "
+	branchLeader leader = boxBranch + " "
+	elbowLeader  leader = boxLeft + " "
+	emptyLeader  leader = ""
 )
 
 func formatIndent(n int) string {
@@ -80,7 +83,7 @@ type TreeWriter struct {
 
 var _ Recorder = &TreeWriter{}
 
-func tabPrintf(indent int, leader string, format string, args ...interface{}) {
+func tabPrintf(indent int, leader leader, format string, args ...interface{}) {
 	timestamp := time.Now().Format("15:04:05.0000")
 	msg := fmt.Sprintf(format, args...)
 	lines := strings.Split(msg, "\n")
@@ -113,7 +116,7 @@ func (t *TreeWriter) Failed() bool {
 
 // NewDocument ...
 func (t *TreeWriter) NewDocument(desc string) Closer {
-	tabPrintf(t.indent, "", "Running: %s", desc)
+	tabPrintf(t.indent, emptyLeader, "Running: %s", desc)
 
 	t.stepCount = 0
 	t.allErrors = map[Severity]int{}
