@@ -25,8 +25,9 @@ type TapWriter struct {
 
 var _ Recorder = &TapWriter{}
 
-// printWithIndent prints a (possibly multi-line) message, prefixed by the indent.
-func printWithIndent(indent string, msg string) {
+// indentf prints a (possibly multi-line) message, prefixed by the indent.
+func indentf(indent string, format string, args ...interface{}) {
+	msg := fmt.Sprintf(format, args...)
 	for _, line := range strings.Split(msg, "\n") {
 		fmt.Printf("%s%s\n", indent, line)
 	}
@@ -75,9 +76,9 @@ func (t *TapWriter) NewStep(desc string) Closer {
 
 		if len(t.stepErrors) > 0 {
 			indent := "  "
-			printWithIndent(indent, "---")
-			printWithIndent(indent, string(must.Bytes(yaml.Marshal(t.stepErrors))))
-			printWithIndent(indent, "...")
+			indentf(indent, "---")
+			indentf(indent, string(must.Bytes(yaml.Marshal(t.stepErrors))))
+			indentf(indent, "...")
 		}
 
 		t.stepErrors = nil
@@ -86,14 +87,14 @@ func (t *TapWriter) NewStep(desc string) Closer {
 
 // Messagef ...
 func (t *TapWriter) Messagef(format string, args ...interface{}) {
-	printWithIndent("# ", fmt.Sprintf(format, args...))
+	indentf("# ", format, args...)
 }
 
 // Errorf ...
 func (t *TapWriter) Errorf(severity Severity, format string, args ...interface{}) {
 	msg := fmt.Sprintf(format, args...)
 
-	printWithIndent(fmt.Sprintf("# %s -", string(severity)), msg)
+	indentf(fmt.Sprintf("# %s -", string(severity)), msg)
 
 	t.stepErrors = append(t.stepErrors, stepError{
 		Severity: severity,
