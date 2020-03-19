@@ -55,10 +55,11 @@ func (t *TapWriter) NewDocument(desc string) Closer {
 	}
 
 	t.docCount++
-	t.stepCount = 1
+	t.stepCount = 0
 
 	return CloserFunc(func() {
-		fmt.Printf("1..%d\n", t.stepCount+1)
+		// NOTE, it's a closed interval.
+		fmt.Printf("1..%d\n", t.stepCount-1)
 	})
 }
 
