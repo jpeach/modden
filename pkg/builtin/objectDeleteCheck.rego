@@ -1,3 +1,5 @@
+package builtin.check.deletion
+
 # Default check for deleting Kubernetes object updates.
 
 error[msg] {

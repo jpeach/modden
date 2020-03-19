@@ -13,6 +13,7 @@ import (
 	"github.com/jpeach/modden/pkg/must"
 	"github.com/jpeach/modden/pkg/test"
 	"github.com/jpeach/modden/pkg/utils"
+	"github.com/open-policy-agent/opa/ast"
 
 	"github.com/spf13/cobra"
 )
@@ -80,6 +81,7 @@ Anything Protocol) results.
 	run.Flags().StringArray("param", []string{}, "Additional Rego parameter(s) in key=value format")
 	run.Flags().StringSlice("watch", []string{}, "Additional Kubernetes resources to monitor")
 	run.Flags().StringSlice("fixtures", []string{}, "Additional Kubernetes resource fixtures")
+	run.Flags().StringSlice("policies", []string{}, "Additional Rego policy packages")
 	run.Flags().String("format", "tree", "Test results output format")
 
 	return CommandWithDefaults(run)
@@ -149,6 +151,20 @@ func runCmd(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	if policies := must.StringSlice(cmd.Flags().GetStringSlice("policies")); len(policies) > 0 {
+		modules, err := loadPolicies(policies)
+		if err != nil {
+			return ExitError{
+				Code: EX_DATAERR,
+				Err:  err,
+			}
+		}
+
+		for _, m := range modules {
+			opts = append(opts, test.RegoModuleOpt(m))
+		}
+	}
+
 	// TODO(jpeach): set user agent from program version.
 	kube.SetUserAgent("modden/TODO")
 
@@ -170,6 +186,52 @@ func runCmd(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+func loadPolicies(paths []string) (map[string]*ast.Module, error) {
+	modules := map[string]*ast.Module{}
+	loadPath := func(filePath string) error {
+		m, err := utils.ParseModuleFile(filePath)
+		if err != nil {
+			return err
+		}
+
+		modules[filePath] = m
+		return nil
+	}
+
+	for _, p := range paths {
+		var err error
+
+		if utils.IsDirPath(p) {
+			err = filepath.Walk(p, func(path string, info os.FileInfo, err error) error {
+				if err != nil {
+					return err
+				}
+
+				if info.IsDir() {
+					return nil
+				}
+
+				return loadPath(path)
+			})
+		} else {
+			err = loadPath(p)
+		}
+
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// Verify that the policies compile. We compile them all at
+	// the end so that the compiler can resolve any dependencies.
+	compiler := ast.NewCompiler()
+	if compiler.Compile(modules); compiler.Failed() {
+		return modules, compiler.Errors
+	}
+
+	return modules, nil
 }
 
 func loadFixtures(paths []string) error {

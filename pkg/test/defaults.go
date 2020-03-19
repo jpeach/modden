@@ -2,28 +2,25 @@ package test
 
 import (
 	"github.com/jpeach/modden/pkg/builtin"
-	"github.com/jpeach/modden/pkg/doc"
 	"github.com/jpeach/modden/pkg/driver"
 	"github.com/jpeach/modden/pkg/must"
+
+	"github.com/open-policy-agent/opa/ast"
 )
 
 // DefaultObjectCheckForOperation returns a built-in default check
 // for applying Kubernetes objects.
-func DefaultObjectCheckForOperation(op driver.ObjectOperationType) *doc.Fragment {
+func DefaultObjectCheckForOperation(op driver.ObjectOperationType) *ast.Module {
 	var data []byte
+	var name string
 
 	switch op {
 	case driver.ObjectOperationUpdate:
-		data = must.Bytes(builtin.Asset("pkg/builtin/objectUpdateCheck.rego"))
+		name = "pkg/builtin/objectUpdateCheck.rego"
 	case driver.ObjectOperationDelete:
-		data = must.Bytes(builtin.Asset("pkg/builtin/objectDeleteCheck.rego"))
+		name = "pkg/builtin/objectDeleteCheck.rego"
 	}
 
-	frag, err := doc.NewRegoFragment(data)
-	if err != nil {
-		// TODO(jpeach): send to test listener.
-		panic(err)
-	}
-
-	return frag
+	data = must.Bytes(builtin.Asset(name))
+	return must.Module(ast.ParseModule(name, string(data)))
 }

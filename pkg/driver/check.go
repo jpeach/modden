@@ -29,6 +29,9 @@ const SeverityError Severity = "Error"
 // SeverityFatal ...
 const SeverityFatal Severity = "Fatal"
 
+// RegoOpt is a convenience type alias.
+type RegoOpt = func(*rego.Rego)
+
 // CheckResult ...
 type CheckResult struct {
 	Severity Severity
@@ -63,7 +66,7 @@ func NewCheckTracer(w io.Writer) CheckTracer {
 // CheckDriver is a driver for running Rego policy checks.
 type CheckDriver interface {
 	// Eval evaluates the given module and returns and check results.
-	Eval(*ast.Module, ...func(*rego.Rego)) ([]CheckResult, error)
+	Eval(*ast.Module, ...RegoOpt) ([]CheckResult, error)
 
 	Trace(CheckTracer)
 
@@ -176,9 +179,7 @@ func (r *regoDriver) RemovePath(where string) error {
 }
 
 // Eval evaluates checks in the given module.
-func (r *regoDriver) Eval(m *ast.Module, opts ...func(*rego.Rego)) ([]CheckResult, error) {
-	c := ast.NewCompiler()
-
+func (r *regoDriver) Eval(m *ast.Module, opts ...RegoOpt) ([]CheckResult, error) {
 	// Find the unique set of assertion rules to query.
 	ruleNames := findAssertionRules(m)
 	checkResults := make([]CheckResult, 0, len(ruleNames))
@@ -191,26 +192,26 @@ func (r *regoDriver) Eval(m *ast.Module, opts ...func(*rego.Rego)) ([]CheckResul
 		// context so names resolve correctly.
 		pkg := strings.TrimPrefix(m.Package.Path.String(), "data.")
 
-		regoObj := rego.New(
+		// NOTE(jpeach): we assume that the caller has
+		// passed a compiler in the options and that if
+		// the given module hasn't already been compiled,
+		// the caller also passed a ParsedModule option.
+
+		options := []RegoOpt{
 			// Scope the query to the current module package.
 			rego.Package(pkg),
 			// Query for the result of this named rule.
 			rego.Query(queryForRuleName(name)),
-			rego.Compiler(c),
-			rego.ParsedModule(m),
 			rego.Store(r.store),
-
-			// TODO(jpeach): if tracing is configured, add rego.Tracer().
-		)
-
-		for _, o := range opts {
-			o(regoObj)
 		}
+
+		options = append(options, opts...)
 
 		if r.tracer != nil {
-			rego.Tracer(r.tracer)(regoObj)
+			options = append(options, rego.Tracer(r.tracer))
 		}
 
+		regoObj := rego.New(options...)
 		resultSet, err := regoObj.Eval(context.Background())
 		if err != nil {
 			// TODO(jpeach): propagate fatal error result.

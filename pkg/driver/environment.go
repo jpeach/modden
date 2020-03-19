@@ -10,6 +10,7 @@ import (
 	"github.com/jpeach/modden/pkg/version"
 
 	"github.com/google/uuid"
+	"github.com/open-policy-agent/opa/ast"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"sigs.k8s.io/kustomize/kyaml/yaml"
 	sigyaml "sigs.k8s.io/yaml"
@@ -69,7 +70,7 @@ type Object struct {
 	Object *unstructured.Unstructured
 
 	// Check is a Rego check to run on the apply.
-	Check *doc.Fragment
+	Check *ast.Module
 
 	// Operation specifies whether we are updating or deleting the object.
 	Operation ObjectOperationType
@@ -222,7 +223,7 @@ var specialOpHandlers = map[string]func(val interface{}, o *Object) error{
 			return err
 		}
 
-		o.Check = frag
+		o.Check = frag.Rego()
 		return nil
 	},
 

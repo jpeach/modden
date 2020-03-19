@@ -37,7 +37,7 @@ func ParseCheckFragment(input string) (*ast.Module, error) {
 
 	m, err := ast.ParseModule(
 		fmt.Sprintf("internal/check/%s", moduleName),
-		fmt.Sprintf("package check.%s\n%s", moduleName, string(input)))
+		fmt.Sprintf("package check.%s\n%s", moduleName, input))
 	if err != nil {
 		return nil, err
 	}

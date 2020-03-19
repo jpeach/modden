@@ -7,12 +7,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jpeach/modden/pkg/builtin"
 	"github.com/jpeach/modden/pkg/doc"
 	"github.com/jpeach/modden/pkg/driver"
 	"github.com/jpeach/modden/pkg/filter"
 	"github.com/jpeach/modden/pkg/must"
 	"github.com/jpeach/modden/pkg/utils"
 
+	"github.com/open-policy-agent/opa/ast"
 	"github.com/open-policy-agent/opa/rego"
 	"github.com/open-policy-agent/opa/storage"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -55,6 +57,15 @@ func RegoParamOpt(key string, val string) RunOpt {
 		p := path.Join(parts...)
 		must.Must(tc.checkDriver.StorePath(p))
 		must.Must(tc.checkDriver.StoreItem(p, val))
+	})
+}
+
+// RegoModuleOpt makes the given module available to the Rego evaluation.
+func RegoModuleOpt(m *ast.Module) RunOpt {
+	return RunOpt(func(tc *testContext) {
+		// We assume that the caller has already validated
+		// the file and that it can be read and parsed.
+		tc.policyModules = append(tc.policyModules, m)
 	})
 }
 
@@ -109,12 +120,16 @@ type testContext struct {
 	preserve         bool
 	checkTimeout     time.Duration
 	watchedResources []schema.GroupVersionResource
+	policyModules    []*ast.Module
 }
 
 // Run executes a test document.
 //
 // nolint(gocognit)
 func Run(testDoc *doc.Document, opts ...RunOpt) error {
+	var compiler *ast.Compiler
+	var err error
+
 	tc := testContext{
 		envDriver:    driver.NewEnvironment(),
 		checkDriver:  driver.NewRegoDriver(),
@@ -159,6 +174,13 @@ func Run(testDoc *doc.Document, opts ...RunOpt) error {
 
 	tc.checkDriver.StoreItem("/test/params/run-id", tc.envDriver.UniqueID())
 
+	step(tc.recorder, "compiling test document", func() {
+		compiler, err = compileDocument(testDoc, tc.policyModules)
+		if err != nil {
+			tc.recorder.Errorf(SeverityFatal, "%s", err.Error())
+		}
+	})
+
 	for _, p := range testDoc.Parts {
 		if !tc.recorder.ShouldContinue() {
 			break
@@ -175,7 +197,6 @@ func Run(testDoc *doc.Document, opts ...RunOpt) error {
 
 		switch p.Type {
 		case doc.FragmentTypeObject:
-			var err error
 			var obj *driver.Object
 			var result *driver.OperationResult
 
@@ -290,12 +311,26 @@ func Run(testDoc *doc.Document, opts ...RunOpt) error {
 					utils.NamespaceOrDefault(obj.Object),
 					obj.Object.GetName())
 
-				// Now, if this object has a specific check, run it. Otherwise, we can
-				if obj.Check == nil {
-					obj.Check = DefaultObjectCheckForOperation(obj.Operation)
+				check := obj.Check
+				opts := []driver.RegoOpt{
+					rego.Compiler(compiler),
+					rego.Input(result),
 				}
 
-				checkResults, err := runCheck(tc.checkDriver, obj.Check, tc.checkTimeout, result)
+				// If we have a check from the object,
+				// it has not been added to the compiler,
+				// so we need to pass it in as a parsed
+				// module. Otherwise, we can use the
+				// default check which the compiler had
+				// already compiled.
+				if check != nil {
+					opts = append(opts, rego.ParsedModule(check))
+				} else {
+					check = DefaultObjectCheckForOperation(obj.Operation)
+				}
+
+				checkResults, err := runCheck(
+					tc.checkDriver, check, tc.checkTimeout, opts...)
 				if err != nil {
 					tc.recorder.Errorf(SeverityFatal, "%s", err)
 				}
@@ -306,7 +341,8 @@ func Run(testDoc *doc.Document, opts ...RunOpt) error {
 		case doc.FragmentTypeRego:
 
 			step(tc.recorder, "running Rego check", func() {
-				checkResults, err := runCheck(tc.checkDriver, &p, tc.checkTimeout, nil)
+				checkResults, err := runCheck(
+					tc.checkDriver, p.Rego(), tc.checkTimeout, rego.Compiler(compiler))
 				if err != nil {
 					tc.recorder.Errorf(SeverityFatal, "%s", err)
 				}
@@ -375,24 +411,70 @@ func recordResults(recorder Recorder, resultSet []driver.CheckResult) {
 	}
 }
 
+// compileDocument compiles all the Rego policies in the test document.
+func compileDocument(d *doc.Document, modules []*ast.Module) (*ast.Compiler, error) {
+	compiler := ast.NewCompiler()
+	modmap := map[string]*ast.Module{}
+
+	// Compile all the built-in Rego files. We require that
+	// each file has a unique module name.
+	for _, a := range builtin.AssetNames() {
+		if !strings.HasSuffix(a, ".rego") {
+			continue
+		}
+
+		str := string(must.Bytes(builtin.Asset(a)))
+		m := must.Module(ast.ParseModule(a, str))
+
+		if _, ok := modmap[a]; ok {
+			return nil, fmt.Errorf("duplicate builtin Rego module asset %q", a)
+		}
+
+		modmap[a] = m
+	}
+
+	// Add all the modules that the user specified on the commandline.
+	for _, m := range modules {
+		name := m.Package.Loc().File
+		if _, ok := modmap[name]; ok {
+			return nil, fmt.Errorf("duplicate Rego module file %q", name)
+		}
+
+		modmap[name] = m
+	}
+
+	// Finally, add all the check modules in the document.
+	for _, p := range d.Parts {
+		switch p.Type {
+		case doc.FragmentTypeRego:
+			name := fmt.Sprintf("doc/%s", p.Rego().Package.Path.String())
+			if _, ok := modmap[name]; ok {
+				return nil, fmt.Errorf("duplicate Rego fragment file %q", name)
+			}
+
+			modmap[name] = p.Rego()
+		}
+	}
+
+	if compiler.Compile(modmap); compiler.Failed() {
+		return nil, compiler.Errors
+	}
+
+	return compiler, nil
+}
+
 func runCheck(
 	c driver.CheckDriver,
-	f *doc.Fragment,
+	m *ast.Module,
 	timeout time.Duration,
-	input interface{}) ([]driver.CheckResult, error) {
+	opts ...driver.RegoOpt) ([]driver.CheckResult, error) {
 	var err error
 	var results []driver.CheckResult
-	var ops []func(*rego.Rego)
-
-	if input != nil {
-		ops = append(ops, rego.Input(input))
-	}
 
 	startTime := time.Now()
 
 	for time.Since(startTime) < timeout {
-
-		results, err = c.Eval(f.Rego(), ops...)
+		results, err = c.Eval(m, opts...)
 		if err != nil {
 			return nil, err
 		}

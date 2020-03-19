@@ -5,13 +5,14 @@ import (
 	"testing"
 
 	"github.com/open-policy-agent/opa/ast"
+	"github.com/open-policy-agent/opa/rego"
 	"github.com/open-policy-agent/opa/storage"
 	"github.com/open-policy-agent/opa/storage/inmem"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func parse(t *testing.T, text string) *ast.Module {
+func parse(t *testing.T, text string) (*ast.Module, RegoOpt) {
 	t.Helper()
 
 	m, err := ast.ParseModule("test", text)
@@ -19,7 +20,14 @@ func parse(t *testing.T, text string) *ast.Module {
 		t.Fatalf("failed to parse module: %s", err)
 	}
 
-	return m
+	// (*CheeckDriver)Eval() doesn't compile anything, so we
+	// need to pass in a compiler with pre-loaded modules.
+	c := ast.NewCompiler()
+	if c.Compile(map[string]*ast.Module{"test": m}); c.Failed() {
+		t.Fatalf("failed to compile module: %s", c.Errors)
+	}
+
+	return m, rego.Compiler(c)
 }
 
 func TestQueryStringResult(t *testing.T) {

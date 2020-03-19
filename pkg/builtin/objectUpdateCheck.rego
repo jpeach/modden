@@ -1,3 +1,5 @@
+package builtin.check.update
+
 # Default check for updating Kubernetes object updates.
 
 fatal[msg] {
