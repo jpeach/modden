@@ -205,7 +205,8 @@ func (o *objectDriver) Apply(obj *unstructured.Unstructured) (*OperationResult, 
 
 	isNamespaced, err := o.kube.KindIsNamespaced(gvk)
 	if err != nil {
-		return nil, fmt.Errorf("failed check if resource kind is namespaced: %s", err)
+		return nil, fmt.Errorf("failed check if resource kind %q is namespaced: %s",
+			gvk.Kind, err)
 	}
 
 	gvr, err := o.kube.ResourceForKind(obj.GetObjectKind().GroupVersionKind())
