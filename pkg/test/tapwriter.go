@@ -10,8 +10,8 @@ import (
 )
 
 type stepError struct {
-	Severity Severity
-	Message  string
+	Severity Severity `yaml:"severity" json:"severity"`
+	Message  string   `yaml:"message" json:"message"`
 }
 
 // TapWriter writes test records in TAP format.
