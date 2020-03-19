@@ -2,7 +2,6 @@ package doc
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"io"
 
@@ -39,18 +38,6 @@ type InvalidFragmentErr struct {
 
 func (e *InvalidFragmentErr) Error() string {
 	return fmt.Sprintf("invalid %s fragment", e.Type)
-}
-
-// AsRegoCompilationErr attempts to convert this error into a Rego
-// compilation error.
-func AsRegoCompilationErr(err error) ast.Errors {
-	var astErrors ast.Errors
-
-	if errors.As(err, &astErrors) {
-		return astErrors
-	}
-
-	return nil
 }
 
 // FragmentType is the parsed content type for the Fragment.
@@ -216,7 +203,7 @@ func NewRegoFragment(data []byte) (*Fragment, error) {
 
 	fragType, err := frag.Decode()
 	if err != nil {
-		return nil, fmt.Errorf("%s: %s", err, AsRegoCompilationErr(err))
+		return nil, fmt.Errorf("%s: %s", err, utils.AsRegoCompilationErr(err))
 	}
 
 	if fragType != FragmentTypeRego {

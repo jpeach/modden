@@ -246,7 +246,7 @@ func validateDocument(path string, r test.Recorder) *doc.Document {
 		case nil:
 			r.Messagef("decoded part %d as %s", i, fragType)
 		default:
-			if err := doc.AsRegoCompilationErr(err); err != nil {
+			if err := utils.AsRegoCompilationErr(err); err != nil {
 				r.Errorf(test.SeverityFatal, "%s", err.Error())
 			} else {
 				r.Errorf(test.SeverityFatal, "%s", err.Error())
