@@ -3,6 +3,7 @@ package must
 import (
 	"time"
 
+	"github.com/open-policy-agent/opa/ast"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
@@ -92,4 +93,13 @@ func Unstructured(u *unstructured.Unstructured, err error) *unstructured.Unstruc
 	}
 
 	return u
+}
+
+// Module ...
+func Module(m *ast.Module, err error) *ast.Module {
+	if err != nil {
+		panic(err.Error())
+	}
+
+	return m
 }
