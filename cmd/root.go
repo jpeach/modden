@@ -20,6 +20,11 @@ const (
 
 	// EX_NOINPUT is an exit code indicating missing input data.
 	EX_NOINPUT ExitCode = 66 //nolint(golint)
+
+	// EX_DATAERR means the input data was incorrect in some
+	// way.  This should only be used for user's data and not
+	// system files.
+	EX_DATAERR ExitCode = 65 //nolint(golint)
 )
 
 // ExitError captures an ExitCode and its associated error message.
