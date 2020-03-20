@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"strings"
 
 	"github.com/jpeach/modden/pkg/utils"
@@ -272,20 +273,33 @@ func (r *regoDriver) Eval(m *ast.Module, opts ...RegoOpt) ([]CheckResult, error)
 func findResultMessage(result *rego.ExpressionValue) []string {
 	var messages []string
 
-	// This might be a boolean if the rule was this:
-	//	`error { ... }`
-	if _, ok := result.Value.(bool); ok {
+	switch value := result.Value.(type) {
+	case bool:
+		// This might be a boolean if the rule was this:
+		//	`error { ... }`
+		//
 		// Rego only returns the results of boolean rules
 		// if the rule was true, so the value of the bool
 		// result doesn't matter. We just know there's no
 		// message.
-		return []string{""}
-	}
+		return []string{fmt.Sprintf("rule %q was %t", result.Text, value)}
 
-	// If the value isn't some kind of slice, then we don't
-	// know how to deal with it.
-	if _, ok := result.Value.([]interface{}); !ok {
+	case string:
+		// This might be a string if the rule was this:
+		//	`error = msg {
+		//	 	...
+		//		msg := "this is a failing thing"
+		//	}`
+		//
+		return []string{value}
+
+	case []interface{}:
+		// Handled below.
+
+	default:
+		// We don't know how to deal with this kind of result. Maybe stringify it?
 		// TODO(jpeach): this should be a fatal error.
+		log.Printf("unhandled result value type '%T'", result.Value)
 		return messages
 	}
 
@@ -303,6 +317,8 @@ func findResultMessage(result *rego.ExpressionValue) []string {
 					messages = append(messages, m)
 				}
 			}
+		default:
+			log.Printf("slice value of non-string: %v", value)
 		}
 	}
 

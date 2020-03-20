@@ -93,7 +93,7 @@ error  { msg = "this error doesn't appear'"}
 
 	expected := []CheckResult{{
 		Severity: SeverityError,
-		Message:  "",
+		Message:  "rule \"error\" was true",
 	}}
 
 	assert.ElementsMatch(t, expected, results)
