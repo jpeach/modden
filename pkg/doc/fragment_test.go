@@ -48,7 +48,7 @@ func TestParseFragment(t *testing.T) {
 				if f.Rego() != nil {
 					t.Errorf("non-nil module for object fragment")
 				}
-			case FragmentTypeRego:
+			case FragmentTypeModule:
 				if f.Object() != nil {
 					t.Errorf("non-nil object for rego fragment")
 				}
@@ -107,11 +107,11 @@ metadata:
 	run(t, "Rego composite value", testcase{
 		Data: `
 		rect := {"width": 2, "height": 4}`,
-		Want: FragmentTypeRego,
+		Want: FragmentTypeModule,
 	})
 
 	run(t, "Rego rule", testcase{
 		Data: `t { x := 42; y := 41; x > y }`,
-		Want: FragmentTypeRego,
+		Want: FragmentTypeModule,
 	})
 }

@@ -22,8 +22,8 @@ const (
 	FragmentTypeInvalid
 	// FragmentTypeObject indicates this Fragment contains a Kubernetes Object.
 	FragmentTypeObject
-	// FragmentTypeRego indicates this Fragment contains Rego.
-	FragmentTypeRego
+	// FragmentTypeModule indicates this Fragment contains a Rego module.
+	FragmentTypeModule
 )
 
 var _ error = &InvalidFragmentErr{}
@@ -47,7 +47,7 @@ func (t FragmentType) String() string {
 	switch t {
 	case FragmentTypeObject:
 		return "Kubernetes"
-	case FragmentTypeRego:
+	case FragmentTypeModule:
 		return "Rego"
 	case FragmentTypeInvalid:
 		return "invalid"
@@ -78,7 +78,7 @@ func (f *Fragment) Object() *unstructured.Unstructured {
 // Rego returns the Rego module if there is one.
 func (f *Fragment) Rego() *ast.Module {
 	switch f.Type {
-	case FragmentTypeRego:
+	case FragmentTypeModule:
 		return f.module
 	default:
 		return nil
@@ -153,7 +153,7 @@ func (f *Fragment) Decode() (FragmentType, error) {
 	if err != nil {
 		return FragmentTypeInvalid,
 			utils.ChainErrors(
-				&InvalidFragmentErr{Type: FragmentTypeRego}, err,
+				&InvalidFragmentErr{Type: FragmentTypeModule}, err,
 			)
 	}
 
@@ -163,13 +163,13 @@ func (f *Fragment) Decode() (FragmentType, error) {
 		return FragmentTypeUnknown, nil
 	}
 
-	f.Type = FragmentTypeRego
+	f.Type = FragmentTypeModule
 	f.module = m
 	return f.Type, nil
 }
 
 // NewRegoFragment decodes the given data and returns a new Fragment
-// of type FragmentTypeRego.
+// of type FragmentTypeModule.
 func NewRegoFragment(data []byte) (*Fragment, error) {
 	frag := Fragment{Bytes: data}
 
@@ -178,7 +178,7 @@ func NewRegoFragment(data []byte) (*Fragment, error) {
 		return nil, fmt.Errorf("%s: %s", err, utils.AsRegoCompilationErr(err))
 	}
 
-	if fragType != FragmentTypeRego {
+	if fragType != FragmentTypeModule {
 		return nil, fmt.Errorf("unexpected fragment type %q", fragType)
 	}
 

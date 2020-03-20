@@ -338,8 +338,7 @@ func Run(testDoc *doc.Document, opts ...RunOpt) error {
 				recordResults(tc.recorder, checkResults)
 			})
 
-		case doc.FragmentTypeRego:
-
+		case doc.FragmentTypeModule:
 			step(tc.recorder, "running Rego check", func() {
 				checkResults, err := runCheck(
 					tc.checkDriver, p.Rego(), tc.checkTimeout, rego.Compiler(compiler))
@@ -446,7 +445,7 @@ func compileDocument(d *doc.Document, modules []*ast.Module) (*ast.Compiler, err
 	// Finally, add all the check modules in the document.
 	for _, p := range d.Parts {
 		switch p.Type {
-		case doc.FragmentTypeRego:
+		case doc.FragmentTypeModule:
 			name := fmt.Sprintf("doc/%s", p.Rego().Package.Path.String())
 			if _, ok := modmap[name]; ok {
 				return nil, fmt.Errorf("duplicate Rego fragment file %q", name)
