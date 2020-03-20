@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 
 	"github.com/open-policy-agent/opa/ast"
+	"github.com/open-policy-agent/opa/topdown"
 )
 
 // ParseModuleFile parses the Rego module in the given file path.
@@ -48,6 +49,18 @@ func ParseCheckFragment(input string) (*ast.Module, error) {
 	}
 
 	return m, nil
+}
+
+// AsRegoTopdownErr attempts to convert this error error to a Rego
+// topdown.Error.
+func AsRegoTopdownErr(err error) *topdown.Error {
+	var topdownErr *topdown.Error
+
+	if errors.As(err, &topdownErr) {
+		return topdownErr
+	}
+
+	return nil
 }
 
 // AsRegoCompilationErr attempts to convert this error into a Rego

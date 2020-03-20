@@ -6,6 +6,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/jpeach/modden/pkg/utils"
 	"github.com/open-policy-agent/opa/ast"
 	"github.com/open-policy-agent/opa/rego"
 	"github.com/open-policy-agent/opa/storage"
@@ -213,10 +214,6 @@ func (r *regoDriver) Eval(m *ast.Module, opts ...RegoOpt) ([]CheckResult, error)
 
 		regoObj := rego.New(options...)
 		resultSet, err := regoObj.Eval(context.Background())
-		if err != nil {
-			// TODO(jpeach): propagate fatal error result.
-			return nil, err
-		}
 
 		if r.tracer != nil {
 			r.tracer.Write()
@@ -234,6 +231,26 @@ func (r *regoDriver) Eval(m *ast.Module, opts ...RegoOpt) ([]CheckResult, error)
 						})
 				}
 			}
+		}
+
+		// If this was a builtin error, we can return it as a
+		// result. Builtins that fail are typically those that
+		// access external resources (e.g. HTTP), in which case
+		// the failure can be considered part of the test, not
+		// part of the driver.
+		if top := utils.AsRegoTopdownErr(err); top != nil &&
+			top.Code == topdown.BuiltinErr {
+			checkResults = append(checkResults,
+				CheckResult{
+					Severity: SeverityError,
+					Message:  top.Error(),
+				})
+			err = nil
+		}
+
+		// If we didn't consume the error, puke it up the stack.
+		if err != nil {
+			return nil, err
 		}
 	}
 
