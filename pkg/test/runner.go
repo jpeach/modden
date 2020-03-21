@@ -43,7 +43,7 @@ func RecorderOpt(r Recorder) RunOpt {
 // TraceRegoOpt enables Rego tracing.
 func TraceRegoOpt() RunOpt {
 	return RunOpt(func(tc *testContext) {
-		tc.checkDriver.Trace(driver.NewCheckTracer(os.Stdout))
+		tc.regoDriver.Trace(driver.NewRegoTracer(os.Stdout))
 	})
 }
 
@@ -55,8 +55,8 @@ func RegoParamOpt(key string, val string) RunOpt {
 		parts := []string{"/", "test", "params"}
 		parts = append(parts, strings.Split(key, ".")...)
 		p := path.Join(parts...)
-		must.Must(tc.checkDriver.StorePath(p))
-		must.Must(tc.checkDriver.StoreItem(p, val))
+		must.Must(tc.regoDriver.StorePath(p))
+		must.Must(tc.regoDriver.StoreItem(p, val))
 	})
 }
 
@@ -112,7 +112,7 @@ func step(tc Recorder, stepDesc string, f func()) {
 type testContext struct {
 	kubeDriver   *driver.KubeClient
 	objectDriver driver.ObjectDriver
-	checkDriver  driver.CheckDriver
+	regoDriver   driver.RegoDriver
 	envDriver    driver.Environment
 	recorder     Recorder
 
@@ -132,7 +132,7 @@ func Run(testDoc *doc.Document, opts ...RunOpt) error {
 
 	tc := testContext{
 		envDriver:    driver.NewEnvironment(),
-		checkDriver:  driver.NewRegoDriver(),
+		regoDriver:   driver.NewRegoDriver(),
 		checkTimeout: time.Second * 10,
 	}
 
@@ -153,15 +153,15 @@ func Run(testDoc *doc.Document, opts ...RunOpt) error {
 	cancelWatch := tc.objectDriver.Watch(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(o interface{}) {
 			if u, ok := o.(*unstructured.Unstructured); ok {
-				must.Must(storeResource(tc.kubeDriver, tc.checkDriver, u))
+				must.Must(storeResource(tc.kubeDriver, tc.regoDriver, u))
 			}
 		}, UpdateFunc: func(oldObj interface{}, newObj interface{}) {
 			if u, ok := newObj.(*unstructured.Unstructured); ok {
-				must.Must(storeResource(tc.kubeDriver, tc.checkDriver, u))
+				must.Must(storeResource(tc.kubeDriver, tc.regoDriver, u))
 			}
 		}, DeleteFunc: func(o interface{}) {
 			if u, ok := o.(*unstructured.Unstructured); ok {
-				must.Must(removeResource(tc.kubeDriver, tc.checkDriver, u))
+				must.Must(removeResource(tc.kubeDriver, tc.regoDriver, u))
 			}
 		},
 	})
@@ -172,7 +172,7 @@ func Run(testDoc *doc.Document, opts ...RunOpt) error {
 		tc.objectDriver.InformOn(gvr)
 	}
 
-	tc.checkDriver.StoreItem("/test/params/run-id", tc.envDriver.UniqueID())
+	tc.regoDriver.StoreItem("/test/params/run-id", tc.envDriver.UniqueID())
 
 	step(tc.recorder, "compiling test document", func() {
 		compiler, err = compileDocument(testDoc, tc.policyModules)
@@ -294,7 +294,7 @@ func Run(testDoc *doc.Document, opts ...RunOpt) error {
 
 				if result.Latest != nil {
 					// First, push the result into the store.
-					if err := storeItem(tc.checkDriver, "/resources/applied/last",
+					if err := storeItem(tc.regoDriver, "/resources/applied/last",
 						result.Latest.UnstructuredContent()); err != nil {
 						tc.recorder.Errorf(SeverityFatal, "failed to store result: %s", err)
 						return
@@ -330,7 +330,7 @@ func Run(testDoc *doc.Document, opts ...RunOpt) error {
 				}
 
 				checkResults, err := runCheck(
-					tc.checkDriver, check, tc.checkTimeout, opts...)
+					tc.regoDriver, check, tc.checkTimeout, opts...)
 				if err != nil {
 					tc.recorder.Errorf(SeverityFatal, "%s", err)
 				}
@@ -341,7 +341,7 @@ func Run(testDoc *doc.Document, opts ...RunOpt) error {
 		case doc.FragmentTypeModule:
 			step(tc.recorder, "running Rego check", func() {
 				checkResults, err := runCheck(
-					tc.checkDriver, p.Rego(), tc.checkTimeout, rego.Compiler(compiler))
+					tc.regoDriver, p.Rego(), tc.checkTimeout, rego.Compiler(compiler))
 				if err != nil {
 					tc.recorder.Errorf(SeverityFatal, "%s", err)
 				}
@@ -463,7 +463,7 @@ func compileDocument(d *doc.Document, modules []*ast.Module) (*ast.Compiler, err
 }
 
 func runCheck(
-	c driver.CheckDriver,
+	c driver.RegoDriver,
 	m *ast.Module,
 	timeout time.Duration,
 	opts ...driver.RegoOpt) ([]driver.CheckResult, error) {
@@ -505,7 +505,7 @@ func pathForResource(resource string, u *unstructured.Unstructured) string {
 // data document. If we get a NotFound error when we store the resource,
 // that means that an intermediate path element doesn't exist. In that
 // case, we create the path and retry.
-func storeItem(c driver.CheckDriver, where string, what interface{}) error {
+func storeItem(c driver.RegoDriver, where string, what interface{}) error {
 	err := c.StoreItem(where, what)
 	if storage.IsNotFound(err) {
 		err = c.StorePath(where)
@@ -521,7 +521,7 @@ func storeItem(c driver.CheckDriver, where string, what interface{}) error {
 
 // storeResource stores a Kubernetes object in the resources hierarchy
 // of the Rego data document.
-func storeResource(k *driver.KubeClient, c driver.CheckDriver, u *unstructured.Unstructured) error {
+func storeResource(k *driver.KubeClient, c driver.RegoDriver, u *unstructured.Unstructured) error {
 	gvr, err := k.ResourceForKind(u.GetObjectKind().GroupVersionKind())
 	if err != nil {
 		return err
@@ -535,7 +535,7 @@ func storeResource(k *driver.KubeClient, c driver.CheckDriver, u *unstructured.U
 
 // removeResource removes a Kubernetes object from the resources hierarchy
 // of the Rego data document.
-func removeResource(k *driver.KubeClient, c driver.CheckDriver, u *unstructured.Unstructured) error {
+func removeResource(k *driver.KubeClient, c driver.RegoDriver, u *unstructured.Unstructured) error {
 	gvr, err := k.ResourceForKind(u.GetObjectKind().GroupVersionKind())
 	if err != nil {
 		return err

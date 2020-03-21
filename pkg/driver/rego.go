@@ -40,8 +40,8 @@ type CheckResult struct {
 	Message  string
 }
 
-// CheckTracer is a tracer for check execution.
-type CheckTracer interface {
+// RegoTracer is a tracer for check execution.
+type RegoTracer interface {
 	topdown.Tracer
 	Write()
 }
@@ -55,22 +55,22 @@ func (d *defaultTracer) Write() {
 	topdown.PrettyTrace(d.writer, *d.BufferTracer)
 }
 
-var _ CheckTracer = &defaultTracer{}
+var _ RegoTracer = &defaultTracer{}
 
-// NewCheckTracer returns a new CheckTracer that traces to w.
-func NewCheckTracer(w io.Writer) CheckTracer {
+// NewRegoTracer returns a new RegoTracer that traces to w.
+func NewRegoTracer(w io.Writer) RegoTracer {
 	return &defaultTracer{
 		BufferTracer: topdown.NewBufferTracer(),
 		writer:       w,
 	}
 }
 
-// CheckDriver is a driver for running Rego policy checks.
-type CheckDriver interface {
+// RegoDriver is a driver for running Rego policy checks.
+type RegoDriver interface {
 	// Eval evaluates the given module and returns and check results.
 	Eval(*ast.Module, ...RegoOpt) ([]CheckResult, error)
 
-	Trace(CheckTracer)
+	Trace(RegoTracer)
 
 	// StoreItem stores the value at the given path in the Rego data document.
 	StoreItem(string, interface{}) error
@@ -82,24 +82,24 @@ type CheckDriver interface {
 	RemovePath(where string) error
 }
 
-// NewRegoDriver creates a new CheckDriver that evaluates checks
+// NewRegoDriver creates a new RegoDriver that evaluates checks
 // written in Rego.
 //
 // See https://www.openpolicyagent.org/docs/latest/policy-language/
-func NewRegoDriver() CheckDriver {
+func NewRegoDriver() RegoDriver {
 	return &regoDriver{
 		store: inmem.New(),
 	}
 }
 
-var _ CheckDriver = &regoDriver{}
+var _ RegoDriver = &regoDriver{}
 
 type regoDriver struct {
 	store  storage.Store
-	tracer CheckTracer
+	tracer RegoTracer
 }
 
-func (r *regoDriver) Trace(tracer CheckTracer) {
+func (r *regoDriver) Trace(tracer RegoTracer) {
 	r.tracer = tracer
 }
 
