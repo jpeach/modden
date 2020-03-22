@@ -7,7 +7,9 @@ import (
 	"log"
 	"strings"
 
+	"github.com/jpeach/modden/pkg/result"
 	"github.com/jpeach/modden/pkg/utils"
+
 	"github.com/open-policy-agent/opa/ast"
 	"github.com/open-policy-agent/opa/rego"
 	"github.com/open-policy-agent/opa/storage"
@@ -15,30 +17,8 @@ import (
 	"github.com/open-policy-agent/opa/topdown"
 )
 
-// Severity indicated the seriousness of a test failure.
-// TODO(jpeach): Severity belongs in the test runner package.
-type Severity string
-
-// SeverityNone ...
-const SeverityNone Severity = "None"
-
-// SeverityWarn ...
-const SeverityWarn Severity = "Warn"
-
-// SeverityError ...
-const SeverityError Severity = "Error"
-
-// SeverityFatal ...
-const SeverityFatal Severity = "Fatal"
-
 // RegoOpt is a convenience type alias.
 type RegoOpt = func(*rego.Rego)
-
-// CheckResult ...
-type CheckResult struct {
-	Severity Severity
-	Message  string
-}
 
 // RegoTracer is a tracer for check execution.
 type RegoTracer interface {
@@ -68,7 +48,7 @@ func NewRegoTracer(w io.Writer) RegoTracer {
 // RegoDriver is a driver for running Rego policy checks.
 type RegoDriver interface {
 	// Eval evaluates the given module and returns and check results.
-	Eval(*ast.Module, ...RegoOpt) ([]CheckResult, error)
+	Eval(*ast.Module, ...RegoOpt) ([]result.Result, error)
 
 	Trace(RegoTracer)
 
@@ -181,10 +161,10 @@ func (r *regoDriver) RemovePath(where string) error {
 }
 
 // Eval evaluates checks in the given module.
-func (r *regoDriver) Eval(m *ast.Module, opts ...RegoOpt) ([]CheckResult, error) {
+func (r *regoDriver) Eval(m *ast.Module, opts ...RegoOpt) ([]result.Result, error) {
 	// Find the unique set of assertion rules to query.
 	ruleNames := findAssertionRules(m)
-	checkResults := make([]CheckResult, 0, len(ruleNames))
+	checkResults := make([]result.Result, 0, len(ruleNames))
 
 	for _, name := range ruleNames {
 		// The package path will be an absolute path through the
@@ -222,11 +202,11 @@ func (r *regoDriver) Eval(m *ast.Module, opts ...RegoOpt) ([]CheckResult, error)
 
 		// In each result, the Text is the expression that we
 		// queried, and value is one or more bound messages.
-		for _, result := range resultSet {
-			for _, e := range result.Expressions {
+		for _, r := range resultSet {
+			for _, e := range r.Expressions {
 				for _, m := range findResultMessage(e) {
 					checkResults = append(checkResults,
-						CheckResult{
+						result.Result{
 							Severity: severityForRuleName(e.Text),
 							Message:  fmt.Sprint(m),
 						})
@@ -242,8 +222,8 @@ func (r *regoDriver) Eval(m *ast.Module, opts ...RegoOpt) ([]CheckResult, error)
 		if top := utils.AsRegoTopdownErr(err); top != nil &&
 			top.Code == topdown.BuiltinErr {
 			checkResults = append(checkResults,
-				CheckResult{
-					Severity: SeverityError,
+				result.Result{
+					Severity: result.SeverityError,
 					Message:  top.Error(),
 				})
 			err = nil

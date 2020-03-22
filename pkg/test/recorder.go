@@ -5,22 +5,8 @@ import (
 	"time"
 
 	"github.com/jpeach/modden/pkg/must"
+	"github.com/jpeach/modden/pkg/result"
 )
-
-// Severity indicated the seriousness of a test failure.
-type Severity string
-
-// SeverityNone ...
-const SeverityNone Severity = "None"
-
-// SeverityWarn ...
-const SeverityWarn Severity = "Warn"
-
-// SeverityError ...
-const SeverityError Severity = "Error"
-
-// SeverityFatal ...
-const SeverityFatal Severity = "Fatal"
 
 // MessageSink collects Message entries
 type MessageSink struct {
@@ -60,7 +46,7 @@ type Step struct {
 
 // Error describes a specific test failure.
 type Error struct {
-	Severity Severity
+	Severity result.Severity
 	Message  Message
 }
 
@@ -105,7 +91,7 @@ type Recorder interface {
 	NewDocument(desc string) Closer
 	NewStep(desc string) Closer
 	Messagef(format string, args ...interface{})
-	Errorf(severity Severity, format string, args ...interface{})
+	Errorf(severity result.Severity, format string, args ...interface{})
 }
 
 type defaultRecorder struct {
@@ -141,7 +127,7 @@ func (r *defaultRecorder) ShouldContinue() bool {
 
 	for _, d := range which {
 		d.EachError(func(s *Step, e *Error) {
-			if e.Severity == SeverityFatal {
+			if e.Severity == result.SeverityFatal {
 				count++
 			}
 		})
@@ -157,7 +143,7 @@ func (r *defaultRecorder) Failed() bool {
 	for _, d := range r.docs {
 		d.EachError(func(s *Step, e *Error) {
 			switch e.Severity {
-			case SeverityFatal, SeverityError:
+			case result.SeverityFatal, result.SeverityError:
 				failed = true
 			}
 		})
@@ -220,7 +206,7 @@ func (r *defaultRecorder) Messagef(format string, args ...interface{}) {
 }
 
 // Errorf records a test error to the current Step.
-func (r *defaultRecorder) Errorf(severity Severity, format string, args ...interface{}) {
+func (r *defaultRecorder) Errorf(severity result.Severity, format string, args ...interface{}) {
 	must.Check(r.currentStep != nil,
 		fmt.Errorf("no open step"))
 

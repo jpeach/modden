@@ -1,5 +1,7 @@
 package test
 
+import "github.com/jpeach/modden/pkg/result"
+
 // StackRecorders returns a new Recorder that stacks top and next.
 // For each method in the Recorder interface, methods from top will
 // be called first, followed by the ones from next.
@@ -53,7 +55,7 @@ func (w wrapRecorder) Messagef(format string, args ...interface{}) {
 	w.next.Messagef(format, args...)
 }
 
-func (w wrapRecorder) Errorf(severity Severity, format string, args ...interface{}) {
+func (w wrapRecorder) Errorf(severity result.Severity, format string, args ...interface{}) {
 	w.top.Errorf(severity, format, args...)
 	w.next.Errorf(severity, format, args...)
 }

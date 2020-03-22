@@ -5,13 +5,14 @@ import (
 	"strings"
 
 	"github.com/jpeach/modden/pkg/must"
+	"github.com/jpeach/modden/pkg/result"
 
 	"sigs.k8s.io/yaml"
 )
 
 type stepError struct {
-	Severity Severity `yaml:"severity" json:"severity"`
-	Message  string   `yaml:"message" json:"message"`
+	Severity result.Severity `yaml:"severity" json:"severity"`
+	Message  string          `yaml:"message" json:"message"`
 }
 
 // TapWriter writes test records in TAP format.
@@ -75,6 +76,8 @@ func (t *TapWriter) NewStep(desc string) Closer {
 			fmt.Printf("ok %d - %s\n", n, desc)
 		}
 
+		// TODO(jpeach): deal with SeveritySkip?
+
 		if len(t.stepErrors) > 0 {
 			indent := "  "
 			indentf(indent, "---")
@@ -92,7 +95,7 @@ func (t *TapWriter) Messagef(format string, args ...interface{}) {
 }
 
 // Errorf ...
-func (t *TapWriter) Errorf(severity Severity, format string, args ...interface{}) {
+func (t *TapWriter) Errorf(severity result.Severity, format string, args ...interface{}) {
 	msg := fmt.Sprintf(format, args...)
 
 	indentf(fmt.Sprintf("# %s -", string(severity)), msg)

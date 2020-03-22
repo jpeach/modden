@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/jpeach/modden/pkg/result"
+
 	"github.com/open-policy-agent/opa/ast"
 	"github.com/open-policy-agent/opa/rego"
 	"github.com/open-policy-agent/opa/storage"
@@ -44,17 +46,11 @@ fatal[msg] { msg = "this is the fatal error"}
 
 	require.NoError(t, err)
 
-	expected := []CheckResult{{
-		Severity: SeverityWarn,
-		Message:  "this is the first warning",
-	}, {
-		Severity: SeverityWarn,
-		Message:  "this is the second warning",
-	}, {
-		Severity: SeverityError,
+	expected := []result.Result{{
+		Severity: result.SeverityError,
 		Message:  "this is the error",
 	}, {
-		Severity: SeverityFatal,
+		Severity: result.SeverityFatal,
 		Message:  "this is the fatal error",
 	}}
 
@@ -72,8 +68,8 @@ error [{"msg": msg, "foo": "bar"}] { msg = "this is the nested error"}
 
 	require.NoError(t, err)
 
-	expected := []CheckResult{{
-		Severity: SeverityError,
+	expected := []result.Result{{
+		Severity: result.SeverityError,
 		Message:  "this is the nested error",
 	}}
 
@@ -91,8 +87,8 @@ error  { msg = "this error doesn't appear'"}
 
 	require.NoError(t, err)
 
-	expected := []CheckResult{{
-		Severity: SeverityError,
+	expected := []result.Result{{
+		Severity: result.SeverityError,
 		Message:  "rule \"error\" was true",
 	}}
 
@@ -118,7 +114,7 @@ error[num] { num := sites[_].count }
 
 	// We expect no results because the type of the result will
 	// be []int, which is not supported.
-	assert.ElementsMatch(t, []CheckResult{}, results)
+	assert.ElementsMatch(t, []result.Result{}, results)
 }
 
 func TestStorePathItem(t *testing.T) {

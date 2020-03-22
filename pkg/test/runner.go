@@ -12,6 +12,7 @@ import (
 	"github.com/jpeach/modden/pkg/driver"
 	"github.com/jpeach/modden/pkg/filter"
 	"github.com/jpeach/modden/pkg/must"
+	"github.com/jpeach/modden/pkg/result"
 	"github.com/jpeach/modden/pkg/utils"
 
 	"github.com/open-policy-agent/opa/ast"
@@ -102,7 +103,7 @@ func step(tc Recorder, stepDesc string, f func()) {
 	defer stepCloser.Close()
 
 	if !tc.ShouldContinue() {
-		tc.Errorf(SeverityError, "skipping")
+		tc.Errorf(result.SeverityError, "skipping")
 		return
 	}
 
@@ -177,7 +178,7 @@ func Run(testDoc *doc.Document, opts ...RunOpt) error {
 	step(tc.recorder, "compiling test document", func() {
 		compiler, err = compileDocument(testDoc, tc.policyModules)
 		if err != nil {
-			tc.recorder.Errorf(SeverityFatal, "%s", err.Error())
+			tc.recorder.Errorf(result.SeverityFatal, "%s", err.Error())
 		}
 	})
 
@@ -198,12 +199,12 @@ func Run(testDoc *doc.Document, opts ...RunOpt) error {
 		switch p.Type {
 		case doc.FragmentTypeObject:
 			var obj *driver.Object
-			var result *driver.OperationResult
+			var opResult *driver.OperationResult
 
 			step(tc.recorder, "hydrating Kubernetes object", func() {
 				obj, err = tc.envDriver.HydrateObject(p.Bytes)
 				if err != nil {
-					tc.recorder.Errorf(SeverityFatal, "failed to hydrate object: %s", err)
+					tc.recorder.Errorf(result.SeverityFatal, "failed to hydrate object: %s", err)
 					return
 				}
 
@@ -243,7 +244,7 @@ func Run(testDoc *doc.Document, opts ...RunOpt) error {
 					obj.Object.GroupVersionKind(),
 					utils.NewSelectorFromObject(obj.Object))
 				if err != nil {
-					tc.recorder.Errorf(SeverityFatal, "listing %s:%s objects: %s",
+					tc.recorder.Errorf(result.SeverityFatal, "listing %s:%s objects: %s",
 						obj.Object.GetAPIVersion(), obj.Object.GetKind(), err)
 					return
 				}
@@ -257,7 +258,7 @@ func Run(testDoc *doc.Document, opts ...RunOpt) error {
 				}
 
 				if match == nil {
-					tc.recorder.Errorf(SeverityFatal,
+					tc.recorder.Errorf(result.SeverityFatal,
 						"failed to match object with run ID %s",
 						tc.envDriver.UniqueID())
 					return
@@ -281,22 +282,22 @@ func Run(testDoc *doc.Document, opts ...RunOpt) error {
 
 				switch obj.Operation {
 				case driver.ObjectOperationUpdate:
-					result, err = applyObject(tc.kubeDriver, tc.objectDriver, obj.Object)
+					opResult, err = applyObject(tc.kubeDriver, tc.objectDriver, obj.Object)
 				case driver.ObjectOperationDelete:
-					result, err = tc.objectDriver.Delete(obj.Object)
+					opResult, err = tc.objectDriver.Delete(obj.Object)
 				}
 
 				if err != nil {
 					// TODO(jpeach): this should be treated as a fatal test error.
-					tc.recorder.Errorf(SeverityFatal, "unable to %s object: %s", obj.Operation, err)
+					tc.recorder.Errorf(result.SeverityFatal, "unable to %s object: %s", obj.Operation, err)
 					return
 				}
 
-				if result.Latest != nil {
+				if opResult.Latest != nil {
 					// First, push the result into the store.
 					if err := storeItem(tc.regoDriver, "/resources/applied/last",
-						result.Latest.UnstructuredContent()); err != nil {
-						tc.recorder.Errorf(SeverityFatal, "failed to store result: %s", err)
+						opResult.Latest.UnstructuredContent()); err != nil {
+						tc.recorder.Errorf(result.SeverityFatal, "failed to store result: %s", err)
 						return
 					}
 
@@ -314,7 +315,7 @@ func Run(testDoc *doc.Document, opts ...RunOpt) error {
 				check := obj.Check
 				opts := []driver.RegoOpt{
 					rego.Compiler(compiler),
-					rego.Input(result),
+					rego.Input(opResult),
 				}
 
 				// If we have a check from the object,
@@ -332,7 +333,7 @@ func Run(testDoc *doc.Document, opts ...RunOpt) error {
 				checkResults, err := runCheck(
 					tc.regoDriver, check, tc.checkTimeout, opts...)
 				if err != nil {
-					tc.recorder.Errorf(SeverityFatal, "%s", err)
+					tc.recorder.Errorf(result.SeverityFatal, "%s", err)
 				}
 
 				recordResults(tc.recorder, checkResults)
@@ -343,7 +344,7 @@ func Run(testDoc *doc.Document, opts ...RunOpt) error {
 				checkResults, err := runCheck(
 					tc.regoDriver, p.Rego(), tc.checkTimeout, rego.Compiler(compiler))
 				if err != nil {
-					tc.recorder.Errorf(SeverityFatal, "%s", err)
+					tc.recorder.Errorf(result.SeverityFatal, "%s", err)
 				}
 
 				recordResults(tc.recorder, checkResults)
@@ -404,9 +405,9 @@ func applyObject(k *driver.KubeClient,
 	return o.Apply(u)
 }
 
-func recordResults(recorder Recorder, resultSet []driver.CheckResult) {
+func recordResults(recorder Recorder, resultSet []result.Result) {
 	for _, r := range resultSet {
-		recorder.Errorf(Severity(r.Severity), "%s", r.Message)
+		recorder.Errorf(r.Severity, "%s", r.Message)
 	}
 }
 
@@ -466,9 +467,9 @@ func runCheck(
 	c driver.RegoDriver,
 	m *ast.Module,
 	timeout time.Duration,
-	opts ...driver.RegoOpt) ([]driver.CheckResult, error) {
+	opts ...driver.RegoOpt) ([]result.Result, error) {
 	var err error
-	var results []driver.CheckResult
+	var results []result.Result
 
 	startTime := time.Now()
 

@@ -11,6 +11,7 @@ import (
 	"github.com/jpeach/modden/pkg/driver"
 	"github.com/jpeach/modden/pkg/fixture"
 	"github.com/jpeach/modden/pkg/must"
+	"github.com/jpeach/modden/pkg/result"
 	"github.com/jpeach/modden/pkg/test"
 	"github.com/jpeach/modden/pkg/utils"
 	"github.com/open-policy-agent/opa/ast"
@@ -293,7 +294,7 @@ func validateDocument(path string, r test.Recorder) *doc.Document {
 
 	testDoc, err := doc.ReadFile(path)
 	if err != nil {
-		r.Errorf(test.SeverityFatal, "%s", err.Error())
+		r.Errorf(result.SeverityFatal, "%s", err.Error())
 		return nil
 	}
 
@@ -309,9 +310,9 @@ func validateDocument(path string, r test.Recorder) *doc.Document {
 			r.Messagef("decoded part %d as %s", i, fragType)
 		default:
 			if err := utils.AsRegoCompilationErr(err); err != nil {
-				r.Errorf(test.SeverityFatal, "%s", err.Error())
+				r.Errorf(result.SeverityFatal, "%s", err.Error())
 			} else {
-				r.Errorf(test.SeverityFatal, "%s", err.Error())
+				r.Errorf(result.SeverityFatal, "%s", err.Error())
 			}
 		}
 	}

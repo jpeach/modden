@@ -3,21 +3,21 @@ package driver
 import (
 	"strings"
 
+	"github.com/jpeach/modden/pkg/result"
+
 	"github.com/open-policy-agent/opa/ast"
 )
 
 type ruleInfo struct {
 	name     string
 	prefix   string
-	severity Severity
+	severity result.Severity
 }
 
 var rules = []ruleInfo{
 	// The following rules cause a tet failure if they are ever true.
-	{name: "warn", prefix: "warn_", severity: SeverityWarn},
-	{name: "warning", prefix: "warning_", severity: SeverityWarn},
-	{name: "error", prefix: "error_", severity: SeverityError},
-	{name: "fatal", prefix: "fatal_", severity: SeverityFatal},
+	{name: "error", prefix: "error_", severity: result.SeverityError},
+	{name: "fatal", prefix: "fatal_", severity: result.SeverityFatal},
 }
 
 // matchRuleByName finds the ruleInfo that matches the given query
@@ -33,12 +33,12 @@ func matchRuleByName(name string) *ruleInfo {
 }
 
 // severityForRuleName returns the test severity for a given rule name.
-func severityForRuleName(name string) Severity {
+func severityForRuleName(name string) result.Severity {
 	if q := matchRuleByName(name); q != nil {
 		return q.severity
 	}
 
-	return SeverityNone
+	return result.SeverityNone
 }
 
 // queryForRuleName returns a Rego query for the given rule name. This
@@ -62,7 +62,7 @@ func findAssertionRules(m *ast.Module) []string {
 	for _, rule := range m.Rules {
 		name := rule.Head.Name.String()
 
-		if severityForRuleName(name) == SeverityNone {
+		if severityForRuleName(name) == result.SeverityNone {
 			continue
 		}
 
