@@ -290,15 +290,16 @@ func validateDocument(path string, r test.Recorder) *doc.Document {
 	stepCloser := r.NewStep(fmt.Sprintf("validating document %q", path))
 	defer stepCloser.Close()
 
-	r.Messagef("reading document from %s", path)
+	r.Update(result.Infof("reading document from %s", path))
 
 	testDoc, err := doc.ReadFile(path)
 	if err != nil {
-		r.Errorf(result.SeverityFatal, "%s", err.Error())
+		r.Update(result.Fatalf("%s", err.Error()))
 		return nil
 	}
 
-	r.Messagef("decoding document with %d parts from %s", len(testDoc.Parts), path)
+	r.Update(result.Infof(
+		"decoding document with %d parts from %s", len(testDoc.Parts), path))
 
 	// Before executing anything, verify that we can decode all the
 	// fragments and raise any syntax errors.
@@ -307,12 +308,12 @@ func validateDocument(path string, r test.Recorder) *doc.Document {
 		fragType, err := part.Decode()
 		switch err {
 		case nil:
-			r.Messagef("decoded part %d as %s", i, fragType)
+			r.Update(result.Infof("decoded part %d as %s", i, fragType))
 		default:
 			if err := utils.AsRegoCompilationErr(err); err != nil {
-				r.Errorf(result.SeverityFatal, "%s", err.Error())
+				r.Update(result.Fatalf("%s", err.Error()))
 			} else {
-				r.Errorf(result.SeverityFatal, "%s", err.Error())
+				r.Update(result.Fatalf("%s", err.Error()))
 			}
 		}
 	}

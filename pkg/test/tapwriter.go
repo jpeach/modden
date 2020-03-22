@@ -21,7 +21,8 @@ type TapWriter struct {
 	docCount  int
 	stepCount int
 
-	stepErrors []stepError
+	stepErrors []result.Result
+	stepSkips  []result.Result
 }
 
 var _ Recorder = &TapWriter{}
@@ -60,23 +61,24 @@ func (t *TapWriter) NewDocument(desc string) Closer {
 
 	return CloserFunc(func() {
 		// NOTE, it's a closed interval.
-		fmt.Printf("1..%d\n", t.stepCount-1)
+		fmt.Printf("1..%d\n", t.stepCount)
 	})
 }
 
 // NewStep ...
 func (t *TapWriter) NewStep(desc string) Closer {
-	n := t.stepCount
+	stepNum := t.stepCount + 1
 	t.stepCount++
 
 	return CloserFunc(func() {
-		if len(t.stepErrors) > 0 {
-			fmt.Printf("not ok %d - %s\n", n, desc)
-		} else {
-			fmt.Printf("ok %d - %s\n", n, desc)
+		switch {
+		case len(t.stepErrors) > 0:
+			fmt.Printf("not ok %d - %s\n", stepNum, desc)
+		case len(t.stepSkips) > 0:
+			fmt.Printf("ok %d - %s # skip\n", stepNum, desc)
+		default:
+			fmt.Printf("ok %d - %s\n", stepNum, desc)
 		}
-
-		// TODO(jpeach): deal with SeveritySkip?
 
 		if len(t.stepErrors) > 0 {
 			indent := "  "
@@ -89,19 +91,17 @@ func (t *TapWriter) NewStep(desc string) Closer {
 	})
 }
 
-// Messagef ...
-func (t *TapWriter) Messagef(format string, args ...interface{}) {
-	indentf("# ", format, args...)
-}
-
-// Errorf ...
-func (t *TapWriter) Errorf(severity result.Severity, format string, args ...interface{}) {
-	msg := fmt.Sprintf(format, args...)
-
-	indentf(fmt.Sprintf("# %s -", string(severity)), msg)
-
-	t.stepErrors = append(t.stepErrors, stepError{
-		Severity: severity,
-		Message:  msg,
-	})
+func (t *TapWriter) Update(results ...result.Result) {
+	for _, r := range results {
+		switch r.Severity {
+		case result.SeverityNone:
+			indentf("# ", r.Message)
+		case result.SeveritySkip:
+			indentf(fmt.Sprintf("# %s -", string(r.Severity)), r.Message)
+			t.stepSkips = append(t.stepSkips, r)
+		default:
+			indentf(fmt.Sprintf("# %s -", string(r.Severity)), r.Message)
+			t.stepErrors = append(t.stepErrors, r)
+		}
+	}
 }

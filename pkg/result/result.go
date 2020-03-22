@@ -1,6 +1,9 @@
 package result
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+)
 
 // Severity indicates the seriousness of a Result.
 type Severity string
@@ -19,8 +22,9 @@ const SeveritySkip Severity = "Skip"
 
 // Result ...
 type Result struct {
-	Severity Severity
-	Message  string
+	Severity  Severity
+	Message   string
+	Timestamp time.Time
 }
 
 // IsTerminal returns true if this result should end the test.
@@ -33,10 +37,21 @@ func (c Result) IsTerminal() bool {
 	}
 }
 
+// IsFailed returns true if this result is a test failure.
+func (c Result) IsFailed() bool {
+	switch c.Severity {
+	case SeverityFatal, SeverityError:
+		return true
+	default:
+		return false
+	}
+}
+
 func resultFrom(s Severity, format string, args ...interface{}) Result {
 	return Result{
-		Severity: s,
-		Message:  fmt.Sprintf(format, args...),
+		Severity:  s,
+		Message:   fmt.Sprintf(format, args...),
+		Timestamp: time.Now(),
 	}
 }
 

@@ -65,6 +65,7 @@ func formatFailCounters(fails map[result.Severity]int) string {
 // output in a tree notation.
 type TreeWriter struct {
 	indent    int
+	docCount  int
 	stepCount int
 
 	stepErrors map[result.Severity]int
@@ -106,8 +107,13 @@ func (t *TreeWriter) Failed() bool {
 
 // NewDocument ...
 func (t *TreeWriter) NewDocument(desc string) Closer {
+	if t.docCount >= 0 {
+		fmt.Printf("\n")
+	}
+
 	tabPrintf(t.indent, emptyLeader, "Running: %s", desc)
 
+	t.docCount++
 	t.stepCount = 0
 	t.allErrors = map[result.Severity]int{}
 	return CloserFunc(func() {
@@ -131,6 +137,7 @@ func (t *TreeWriter) NewStep(desc string) Closer {
 	t.indent++
 	t.stepCount++
 	t.stepErrors = map[result.Severity]int{}
+
 	return CloserFunc(func() {
 		nerr := t.stepErrors[result.SeverityFatal] + t.stepErrors[result.SeverityError]
 
@@ -141,6 +148,8 @@ func (t *TreeWriter) NewStep(desc string) Closer {
 			tabPrintf(t.indent, elbowLeader, "Pass")
 		}
 
+		// TODO(jpeach): handle skipped tests.
+
 		t.indent--
 		for k, v := range t.stepErrors {
 			t.allErrors[k] = t.allErrors[k] + v
@@ -148,14 +157,16 @@ func (t *TreeWriter) NewStep(desc string) Closer {
 	})
 }
 
-// Messagef ...
-func (t *TreeWriter) Messagef(format string, args ...interface{}) {
-	tabPrintf(t.indent, branchLeader, format, args...)
-}
-
-// Errorf ...
-func (t *TreeWriter) Errorf(severity result.Severity, format string, args ...interface{}) {
-	t.stepErrors[severity]++
-	msg := fmt.Sprintf(format, args...)
-	tabPrintf(t.indent, branchLeader, "%s: %s", strings.ToUpper(string(severity)), msg)
+func (t *TreeWriter) Update(results ...result.Result) {
+	for _, r := range results {
+		switch r.Severity {
+		case result.SeverityNone:
+			tabPrintf(t.indent, branchLeader, "%s", r.Message)
+		case result.SeveritySkip:
+			tabPrintf(t.indent, branchLeader, "%s", r.Message)
+		default:
+			t.stepErrors[r.Severity]++
+			tabPrintf(t.indent, branchLeader, "%s: %s", strings.ToUpper(string(r.Severity)), r.Message)
+		}
+	}
 }

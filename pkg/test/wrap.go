@@ -22,6 +22,8 @@ type wrapRecorder struct {
 	next Recorder
 }
 
+var _ Recorder = &wrapRecorder{}
+
 func (w wrapRecorder) ShouldContinue() bool {
 	return w.top.ShouldContinue() &&
 		w.next.ShouldContinue()
@@ -50,12 +52,7 @@ func (w wrapRecorder) NewStep(desc string) Closer {
 	return wrappedCloser(closers)
 }
 
-func (w wrapRecorder) Messagef(format string, args ...interface{}) {
-	w.top.Messagef(format, args...)
-	w.next.Messagef(format, args...)
-}
-
-func (w wrapRecorder) Errorf(severity result.Severity, format string, args ...interface{}) {
-	w.top.Errorf(severity, format, args...)
-	w.next.Errorf(severity, format, args...)
+func (w wrapRecorder) Update(results ...result.Result) {
+	w.top.Update(results...)
+	w.next.Update(results...)
 }

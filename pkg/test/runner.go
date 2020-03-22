@@ -103,7 +103,7 @@ func step(tc Recorder, stepDesc string, f func()) {
 	defer stepCloser.Close()
 
 	if !tc.ShouldContinue() {
-		tc.Errorf(result.SeverityError, "skipping")
+		tc.Update(result.Infof("skipping"))
 		return
 	}
 
@@ -178,7 +178,7 @@ func Run(testDoc *doc.Document, opts ...RunOpt) error {
 	step(tc.recorder, "compiling test document", func() {
 		compiler, err = compileDocument(testDoc, tc.policyModules)
 		if err != nil {
-			tc.recorder.Errorf(result.SeverityFatal, "%s", err.Error())
+			tc.recorder.Update(result.Fatalf("%s", err.Error()))
 		}
 	})
 
@@ -204,20 +204,23 @@ func Run(testDoc *doc.Document, opts ...RunOpt) error {
 			step(tc.recorder, "hydrating Kubernetes object", func() {
 				obj, err = tc.envDriver.HydrateObject(p.Bytes)
 				if err != nil {
-					tc.recorder.Errorf(result.SeverityFatal, "failed to hydrate object: %s", err)
+					tc.recorder.Update(
+						result.Fatalf("failed to hydrate object: %s", err))
 					return
 				}
 
 				if obj.Object.GetName() == "" {
-					tc.recorder.Messagef("hydrated anonymous %s:%s object",
-						obj.Object.GetAPIVersion(),
-						obj.Object.GetKind())
+					tc.recorder.Update(
+						result.Infof("hydrated anonymous %s:%s object",
+							obj.Object.GetAPIVersion(),
+							obj.Object.GetKind()))
 				} else {
-					tc.recorder.Messagef("hydrated %s:%s object '%s/%s'",
-						obj.Object.GetAPIVersion(),
-						obj.Object.GetKind(),
-						utils.NamespaceOrDefault(obj.Object),
-						obj.Object.GetName())
+					tc.recorder.Update(
+						result.Infof("hydrated %s:%s object '%s/%s'",
+							obj.Object.GetAPIVersion(),
+							obj.Object.GetKind(),
+							utils.NamespaceOrDefault(obj.Object),
+							obj.Object.GetName()))
 				}
 			})
 
@@ -233,10 +236,11 @@ func Run(testDoc *doc.Document, opts ...RunOpt) error {
 
 				s := utils.NewSelectorFromObject(obj.Object)
 
-				tc.recorder.Messagef("matching anonymous %s:%s object",
-					obj.Object.GetAPIVersion(), obj.Object.GetKind())
+				tc.recorder.Update(result.Infof(
+					"matching anonymous %s:%s object",
+					obj.Object.GetAPIVersion(), obj.Object.GetKind()))
 
-				tc.recorder.Messagef("selector %q", s.String())
+				tc.recorder.Update(result.Infof("selector %q", s.String()))
 
 				// TODO(jpeach): select on namespace if present?
 
@@ -244,8 +248,9 @@ func Run(testDoc *doc.Document, opts ...RunOpt) error {
 					obj.Object.GroupVersionKind(),
 					utils.NewSelectorFromObject(obj.Object))
 				if err != nil {
-					tc.recorder.Errorf(result.SeverityFatal, "listing %s:%s objects: %s",
-						obj.Object.GetAPIVersion(), obj.Object.GetKind(), err)
+					tc.recorder.Update(result.Fatalf(
+						"listing %s:%s objects: %s",
+						obj.Object.GetAPIVersion(), obj.Object.GetKind(), err))
 					return
 				}
 
@@ -258,27 +263,29 @@ func Run(testDoc *doc.Document, opts ...RunOpt) error {
 				}
 
 				if match == nil {
-					tc.recorder.Errorf(result.SeverityFatal,
+					tc.recorder.Update(result.Fatalf(
 						"failed to match object with run ID %s",
-						tc.envDriver.UniqueID())
+						tc.envDriver.UniqueID()))
 					return
 				}
 
 				obj.Object = match
-				tc.recorder.Messagef("matched %s:%s object '%s/%s'",
+				tc.recorder.Update(result.Infof(
+					"matched %s:%s object '%s/%s'",
 					obj.Object.GetAPIVersion(),
 					obj.Object.GetKind(),
 					utils.NamespaceOrDefault(obj.Object),
-					obj.Object.GetName())
+					obj.Object.GetName()))
 
 			})
 
 			step(tc.recorder, "updating Kubernetes object", func() {
-				tc.recorder.Messagef("performing %s operation on %s '%s/%s'",
+				tc.recorder.Update(result.Infof(
+					"performing %s operation on %s '%s/%s'",
 					obj.Operation,
 					obj.Object.GetKind(),
 					utils.NamespaceOrDefault(obj.Object),
-					obj.Object.GetName())
+					obj.Object.GetName()))
 
 				switch obj.Operation {
 				case driver.ObjectOperationUpdate:
@@ -289,7 +296,8 @@ func Run(testDoc *doc.Document, opts ...RunOpt) error {
 
 				if err != nil {
 					// TODO(jpeach): this should be treated as a fatal test error.
-					tc.recorder.Errorf(result.SeverityFatal, "unable to %s object: %s", obj.Operation, err)
+					tc.recorder.Update(result.Fatalf(
+						"unable to %s object: %s", obj.Operation, err))
 					return
 				}
 
@@ -297,7 +305,8 @@ func Run(testDoc *doc.Document, opts ...RunOpt) error {
 					// First, push the result into the store.
 					if err := storeItem(tc.regoDriver, "/resources/applied/last",
 						opResult.Latest.UnstructuredContent()); err != nil {
-						tc.recorder.Errorf(result.SeverityFatal, "failed to store result: %s", err)
+						tc.recorder.Update(result.Fatalf(
+							"failed to store result: %s", err))
 						return
 					}
 
@@ -306,11 +315,12 @@ func Run(testDoc *doc.Document, opts ...RunOpt) error {
 			})
 
 			step(tc.recorder, "running object update check", func() {
-				tc.recorder.Messagef("checking %s of %s '%s/%s'",
+				tc.recorder.Update(result.Infof(
+					"checking %s of %s '%s/%s'",
 					obj.Operation,
 					obj.Object.GetKind(),
 					utils.NamespaceOrDefault(obj.Object),
-					obj.Object.GetName())
+					obj.Object.GetName()))
 
 				check := obj.Check
 				opts := []driver.RegoOpt{
@@ -333,10 +343,10 @@ func Run(testDoc *doc.Document, opts ...RunOpt) error {
 				checkResults, err := runCheck(
 					tc.regoDriver, check, tc.checkTimeout, opts...)
 				if err != nil {
-					tc.recorder.Errorf(result.SeverityFatal, "%s", err)
+					tc.recorder.Update(result.Fatalf("%s", err))
 				}
 
-				recordResults(tc.recorder, checkResults)
+				tc.recorder.Update(checkResults...)
 			})
 
 		case doc.FragmentTypeModule:
@@ -344,10 +354,10 @@ func Run(testDoc *doc.Document, opts ...RunOpt) error {
 				checkResults, err := runCheck(
 					tc.regoDriver, p.Rego(), tc.checkTimeout, rego.Compiler(compiler))
 				if err != nil {
-					tc.recorder.Errorf(result.SeverityFatal, "%s", err)
+					tc.recorder.Update(result.Fatalf("%s", err))
 				}
 
-				recordResults(tc.recorder, checkResults)
+				tc.recorder.Update(checkResults...)
 			})
 
 		case doc.FragmentTypeUnknown:
@@ -403,12 +413,6 @@ func applyObject(k *driver.KubeClient,
 	}
 
 	return o.Apply(u)
-}
-
-func recordResults(recorder Recorder, resultSet []result.Result) {
-	for _, r := range resultSet {
-		recorder.Errorf(r.Severity, "%s", r.Message)
-	}
 }
 
 // compileDocument compiles all the Rego policies in the test document.

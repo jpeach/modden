@@ -8,26 +8,19 @@ import (
 	"github.com/jpeach/modden/pkg/result"
 )
 
-// MessageSink collects Message entries
-type MessageSink struct {
-	Messages []Message
-}
-
 // Document records the execution of a test document.
 type Document struct {
-	MessageSink
-
 	Description string
 	Properties  map[string]interface{}
 	Steps       []*Step
 }
 
-// EachError walks the test document and applies the function to
+// EachResult walks the test document and applies the function to
 // each error.
-func (d *Document) EachError(f func(*Step, *Error)) {
+func (d *Document) EachResult(f func(*Step, *result.Result)) {
 	for _, s := range d.Steps {
-		for _, e := range s.Errors {
-			f(s, &e)
+		for _, r := range s.Results {
+			f(s, &r)
 		}
 	}
 }
@@ -35,33 +28,11 @@ func (d *Document) EachError(f func(*Step, *Error)) {
 // Step describes a stage in a test document that can generate onr
 // or more related errors.
 type Step struct {
-	MessageSink
-
 	Description string
 	Start       time.Time
 	End         time.Time
-	Errors      []Error
+	Results     []result.Result
 	Diagnostics map[string]interface{}
-}
-
-// Error describes a specific test failure.
-type Error struct {
-	Severity result.Severity
-	Message  Message
-}
-
-// Message is a timestamped log entry.
-type Message struct {
-	Message   string
-	Timestamp time.Time
-}
-
-// Messagef formats the arguments into a new Message.
-func Messagef(format string, args ...interface{}) Message {
-	return Message{
-		Message:   fmt.Sprintf(format, args...),
-		Timestamp: time.Now(),
-	}
 }
 
 // Closer is an interface that closes an implicit test tracking entity.
@@ -88,16 +59,21 @@ type Recorder interface {
 
 	// Failed returns true if any errors have been reported.
 	Failed() bool
+
+	// NewDocument created a new test document that can be
+	// closed by calling the returned Closer.
 	NewDocument(desc string) Closer
+
+	// NewDocument created a new test document that can be
+	// closed by calling the returned Closer.
 	NewStep(desc string) Closer
-	Messagef(format string, args ...interface{})
-	Errorf(severity result.Severity, format string, args ...interface{})
+
+	Update(...result.Result)
 }
 
 type defaultRecorder struct {
 	docs []*Document
 
-	sink        []*MessageSink
 	currentDoc  *Document
 	currentStep *Step
 }
@@ -105,17 +81,9 @@ type defaultRecorder struct {
 // DefaultRecorder ...
 var DefaultRecorder Recorder = &defaultRecorder{}
 
-func push(s *MessageSink, stack []*MessageSink) []*MessageSink {
-	return append([]*MessageSink{s}, stack...)
-}
-
-func pop(stack []*MessageSink) []*MessageSink {
-	return stack[1:]
-}
-
 // ShouldContinue returns false if any fatal errors have been recorded.
 func (r *defaultRecorder) ShouldContinue() bool {
-	count := 0
+	terminal := false
 
 	// Make the check context-dependent. If we are in the middle
 	// of a doc, this asks whether we should keep going on the
@@ -126,14 +94,14 @@ func (r *defaultRecorder) ShouldContinue() bool {
 	}
 
 	for _, d := range which {
-		d.EachError(func(s *Step, e *Error) {
-			if e.Severity == result.SeverityFatal {
-				count++
+		d.EachResult(func(s *Step, r *result.Result) {
+			if r.IsTerminal() {
+				terminal = true
 			}
 		})
 	}
 
-	return count == 0
+	return !terminal
 }
 
 // Failed returns true if any errors have been recorded.
@@ -141,9 +109,8 @@ func (r *defaultRecorder) Failed() bool {
 	failed := false
 
 	for _, d := range r.docs {
-		d.EachError(func(s *Step, e *Error) {
-			switch e.Severity {
-			case result.SeverityFatal, result.SeverityError:
+		d.EachResult(func(s *Step, r *result.Result) {
+			if r.IsFailed() {
 				failed = true
 			}
 		})
@@ -161,7 +128,6 @@ func (r *defaultRecorder) NewDocument(desc string) Closer {
 
 	r.currentDoc = doc
 	r.docs = append(r.docs, doc)
-	r.sink = push(&doc.MessageSink, r.sink)
 
 	return CloserFunc(func() {
 		must.Check(r.currentDoc == doc,
@@ -169,7 +135,6 @@ func (r *defaultRecorder) NewDocument(desc string) Closer {
 		must.Check(r.currentStep == nil,
 			fmt.Errorf("closing doc with open step"))
 
-		r.sink = pop(r.sink)
 		r.currentDoc = nil
 	})
 }
@@ -187,7 +152,6 @@ func (r *defaultRecorder) NewStep(desc string) Closer {
 
 	r.currentStep = step
 	r.currentDoc.Steps = append(r.currentDoc.Steps, step)
-	r.sink = push(&step.MessageSink, r.sink)
 
 	return CloserFunc(func() {
 		must.Check(r.currentStep == step,
@@ -195,23 +159,11 @@ func (r *defaultRecorder) NewStep(desc string) Closer {
 
 		step.End = time.Now()
 
-		r.sink = pop(r.sink)
 		r.currentStep = nil
 	})
 }
 
-// Messagef records a message to the current message sink (i.e. Step or Document).
-func (r *defaultRecorder) Messagef(format string, args ...interface{}) {
-	r.sink[0].Messages = append(r.sink[0].Messages, Messagef(format, args...))
-}
-
-// Errorf records a test error to the current Step.
-func (r *defaultRecorder) Errorf(severity result.Severity, format string, args ...interface{}) {
-	must.Check(r.currentStep != nil,
-		fmt.Errorf("no open step"))
-
-	r.currentStep.Errors = append(r.currentStep.Errors, Error{
-		Severity: severity,
-		Message:  Messagef(format, args...),
-	})
+func (r *defaultRecorder) Update(res ...result.Result) {
+	must.Check(r.currentStep != nil, fmt.Errorf("no open step"))
+	r.currentStep.Results = append(r.currentStep.Results, res...)
 }
