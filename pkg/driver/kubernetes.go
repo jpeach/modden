@@ -106,28 +106,23 @@ func (k *KubeClient) ResourceForKind(kind schema.GroupVersionKind) (schema.Group
 // ResourcesForName returns the possible set of schema.GroupVersionResource
 // corresponding to the given resource name.
 func (k *KubeClient) ResourcesForName(name string) ([]schema.GroupVersionResource, error) {
-	_, apiResources, err := k.Discovery.ServerGroupsAndResources()
+	apiResources, err := k.ServerResources()
 	if err != nil {
 		return nil, err
 	}
 
 	var matched []schema.GroupVersionResource
 
-	for _, res := range apiResources {
-		gv := must.GroupVersion(schema.ParseGroupVersion(res.GroupVersion))
-		for _, r := range res.APIResources {
-			if r.Name != name {
-				continue
-			}
-
-			gvr := schema.GroupVersionResource{
-				Group:    gv.Group,
-				Version:  gv.Version,
-				Resource: r.Name,
-			}
-
-			matched = append(matched, gvr)
+	for _, r := range apiResources {
+		if r.Name != name {
+			continue
 		}
+
+		matched = append(matched, schema.GroupVersionResource{
+			Group:    r.Group,
+			Version:  r.Version,
+			Resource: r.Name,
+		})
 	}
 
 	return matched, nil
@@ -168,6 +163,34 @@ func (k *KubeClient) SelectObjects(kind schema.GroupVersionKind, selector labels
 	return results, nil
 }
 
+// ServerResources returns the list of all the resources supported
+// by the API server. Note that this method guarantees to populate the
+// Group and Version fields in the result.
+func (k *KubeClient) ServerResources() ([]metav1.APIResource, error) {
+	var resources []metav1.APIResource
+
+	_, apiList, err := k.Discovery.ServerGroupsAndResources()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, g := range apiList {
+		// The listed resources will have empty Group and Version
+		// fields, which means that they are the same as that of the
+		// list. Parse the list's GroupVersion to populate the result.
+		gv := must.GroupVersion(schema.ParseGroupVersion(g.GroupVersion))
+
+		for _, r := range g.APIResources {
+
+			r.Group = gv.Group
+			r.Version = gv.Version
+			resources = append(resources, r)
+		}
+	}
+
+	return resources, nil
+}
+
 // SelectObjectsByLabel lists all objects that are labeled as managed.
 func (k *KubeClient) SelectObjectsByLabel(label string, value string) ([]*unstructured.Unstructured, error) {
 	groups, err := k.Discovery.ServerPreferredResources()
@@ -178,6 +201,9 @@ func (k *KubeClient) SelectObjectsByLabel(label string, value string) ([]*unstru
 	var resources []schema.GroupVersionResource
 
 	for _, g := range groups {
+		// The listed resources will have empty Group and Version
+		// fields, which means that they are the same as that of the
+		// list. Parse the list's GroupVersion to populate the result.
 		gv := must.GroupVersion(schema.ParseGroupVersion(g.GroupVersion))
 
 		for _, r := range g.APIResources {

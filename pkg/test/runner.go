@@ -173,6 +173,10 @@ func Run(testDoc *doc.Document, opts ...RunOpt) error {
 		tc.objectDriver.InformOn(gvr)
 	}
 
+	if err := storeResourceVersions(tc.kubeDriver, tc.regoDriver); err != nil {
+		return err
+	}
+
 	tc.regoDriver.StoreItem("/test/params/run-id", tc.envDriver.UniqueID())
 
 	step(tc.recorder, "compiling test document", func() {
@@ -522,6 +526,39 @@ func storeItem(c driver.RegoDriver, where string, what interface{}) error {
 	}
 
 	return err
+}
+
+// storeResourceVersions queries the API server for all resource
+// versions, and stores a list of GroupVersionKind objects at the
+// path '/resources/$RESOURCE/.versions'. This lets test documents
+// probe whether the facilities they need are available in the cluster.
+func storeResourceVersions(k *driver.KubeClient, r driver.RegoDriver) error {
+	resources, err := k.ServerResources()
+	if err != nil {
+		return fmt.Errorf("failed to query API server resources: %w", err)
+	}
+
+	resourceVersions := map[string][]schema.GroupVersionKind{}
+
+	for _, v := range resources {
+		if _, ok := resourceVersions[v.Name]; !ok {
+		}
+
+		resourceVersions[v.Name] = append(resourceVersions[v.Name],
+			schema.GroupVersionKind{
+				Group:   v.Group,
+				Version: v.Version,
+				Kind:    v.Kind})
+	}
+
+	for k, v := range resourceVersions {
+		versPath := path.Join("/", "resources", k, ".versions")
+		if err := storeItem(r, versPath, v); err != nil {
+			return fmt.Errorf("failed to store %q: %w", versPath, err)
+		}
+	}
+
+	return nil
 }
 
 // storeResource stores a Kubernetes object in the resources hierarchy

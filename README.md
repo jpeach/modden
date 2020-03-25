@@ -99,6 +99,40 @@ $apply:
     as: test-namespace/echo-server-2
 ```
 
+# Checking Resources
+
+On each test run, `modden` probes the Kubernetes API server for the
+list of supported API resources. This is stored in the Rego data
+document as `data.resources.$RESOURCE[".versions"]`. The key is named
+".versions" so that it is unlikely to conflict with any legitimate
+Kubernetes object name.
+
+The contents of the ".version" key is a JSON array containing a
+GroupVersionKind object for each version of the resource that the
+API server supports.
+
+You can test for specific API versions with Rego code similar to this:
+
+```Rego
+
+Resource := "ingresses"
+Group := "extensions"
+Version := "v1beta1"
+
+default is_supported = false
+is_supported {
+    some n
+
+    # Get the array of GroupVersionKind objects.
+    versions := data.resources[Resource][".versions"]
+
+    # Verify that there is some 'n' for which the versions array
+    # entry matches.
+    versions[n].Group == Group
+    versions[n].Version == Version
+}
+```
+
 # References
 
 - https://github.com/kubernetes/community/blob/master/contributors/devel/sig-api-machinery/strategic-merge-patch.md
