@@ -107,7 +107,7 @@ func (t *TreeWriter) Failed() bool {
 
 // NewDocument ...
 func (t *TreeWriter) NewDocument(desc string) Closer {
-	if t.docCount >= 0 {
+	if t.docCount > 0 {
 		fmt.Printf("\n")
 	}
 
