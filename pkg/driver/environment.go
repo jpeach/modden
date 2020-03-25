@@ -127,7 +127,7 @@ func (e *environ) HydrateObject(objData []byte) (*Object, error) {
 		fix, ok := val.(Fixture)
 		if ok {
 			match := matchFixture(resource)
-			if resource == nil {
+			if match == nil {
 				return nil, fmt.Errorf("failed to match fixture")
 			}
 
