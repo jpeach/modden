@@ -2,8 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -202,25 +200,7 @@ func loadPolicies(paths []string) (map[string]*ast.Module, error) {
 	}
 
 	for _, p := range paths {
-		var err error
-
-		if utils.IsDirPath(p) {
-			err = filepath.Walk(p, func(path string, info os.FileInfo, err error) error {
-				if err != nil {
-					return err
-				}
-
-				if info.IsDir() {
-					return nil
-				}
-
-				return loadPath(path)
-			})
-		} else {
-			err = loadPath(p)
-		}
-
-		if err != nil {
+		if err := utils.WalkFiles(p, loadPath); err != nil {
 			return nil, err
 		}
 	}
@@ -245,25 +225,7 @@ func loadFixtures(paths []string) error {
 	}
 
 	for _, p := range paths {
-		var err error
-
-		if utils.IsDirPath(p) {
-			err = filepath.Walk(p, func(path string, info os.FileInfo, err error) error {
-				if err != nil {
-					return err
-				}
-
-				if info.IsDir() {
-					return nil
-				}
-
-				return loadPath(path)
-			})
-		} else {
-			err = loadPath(p)
-		}
-
-		if err != nil {
+		if err := utils.WalkFiles(p, loadPath); err != nil {
 			return err
 		}
 	}
