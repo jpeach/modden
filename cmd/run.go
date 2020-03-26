@@ -310,8 +310,8 @@ func validateDocument(path string, r test.Recorder) *doc.Document {
 		case nil:
 			r.Update(result.Infof("decoded part %d as %s", i, fragType))
 		default:
-			if err := utils.AsRegoCompilationErr(err); err != nil {
-				r.Update(result.Fatalf("%s", err.Error()))
+			if regoErr := utils.AsRegoCompilationErr(err); regoErr != nil {
+				r.Update(result.Fatalf("%s", regoErr.Error()))
 			} else {
 				r.Update(result.Fatalf("%s", err.Error()))
 			}
