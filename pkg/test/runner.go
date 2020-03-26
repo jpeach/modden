@@ -541,9 +541,6 @@ func storeResourceVersions(k *driver.KubeClient, r driver.RegoDriver) error {
 	resourceVersions := map[string][]schema.GroupVersionKind{}
 
 	for _, v := range resources {
-		if _, ok := resourceVersions[v.Name]; !ok {
-		}
-
 		resourceVersions[v.Name] = append(resourceVersions[v.Name],
 			schema.GroupVersionKind{
 				Group:   v.Group,
