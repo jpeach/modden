@@ -33,7 +33,7 @@ install: ## Install
 		.
 
 pkg/builtin/assets.go: $(wildcard pkg/builtin/*.rego) $(wildcard pkg/builtin/*.yaml)
-	go run github.com/go-bindata/go-bindata/go-bindata -pkg builtin -o $@ $^
+	./hack/go-bindata.sh -pkg builtin -o $@ $^
 
 .PHONY: check
 check: ## Run tests
