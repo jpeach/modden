@@ -74,3 +74,13 @@ func Fatalf(format string, args ...interface{}) Result {
 func Skipf(format string, args ...interface{}) Result {
 	return resultFrom(SeveritySkip, format, args...)
 }
+
+func Contains(results []Result, wanted Severity) bool {
+	for _, r := range results {
+		if r.Severity == wanted {
+			return true
+		}
+	}
+
+	return false
+}

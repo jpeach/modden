@@ -18,6 +18,7 @@ var rules = []ruleInfo{
 	// The following rules cause a tet failure if they are ever true.
 	{name: "error", prefix: "error_", severity: result.SeverityError},
 	{name: "fatal", prefix: "fatal_", severity: result.SeverityFatal},
+	{name: "skip", prefix: "skip_", severity: result.SeveritySkip},
 }
 
 // matchRuleByName finds the ruleInfo that matches the given query

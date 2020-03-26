@@ -133,6 +133,22 @@ is_supported {
 }
 ```
 
+# Writing Rego Tests
+
+## Skipping tests
+
+If there is a skip rule (any rule whose name begins with the string
+"skip"), `modden` will evaluate is for any results. If the skip
+rule has any results, the test will be skipped. This means that no
+subsequent test steps will be performed, but the test as a whole
+will not be considered failed.
+
+Skip rules are also not subject to the normal check timeout, since
+a condition that would cause a test to be skipped (most likely a
+missing cluster feature or capability) is not likely to clear or
+converge to a non-skipping state.
+
 # References
 
+- https://www.openpolicyagent.org/docs/latest/policy-language/
 - https://github.com/kubernetes/community/blob/master/contributors/devel/sig-api-machinery/strategic-merge-patch.md

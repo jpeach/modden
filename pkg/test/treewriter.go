@@ -116,17 +116,17 @@ func (t *TreeWriter) NewDocument(desc string) Closer {
 	t.docCount++
 	t.stepCount = 0
 	t.allErrors = map[result.Severity]int{}
-	return CloserFunc(func() {
-		nerr := t.allErrors[result.SeverityFatal] + t.allErrors[result.SeverityError]
 
-		if nerr > 0 {
-			tabPrintf(t.indent, elbowLeader, "Failed with %s ",
-				formatFailCounters(t.allErrors))
-		} else {
+	return CloserFunc(func() {
+		switch {
+		case t.allErrors[result.SeveritySkip] > 0:
+			tabPrintf(t.indent, elbowLeader, "Skipped after %d steps", t.stepCount)
+		case (t.allErrors[result.SeverityFatal] + t.allErrors[result.SeverityError]) > 0:
+			tabPrintf(t.indent, elbowLeader,
+				"Failed with %s ", formatFailCounters(t.allErrors))
+		default:
 			tabPrintf(t.indent, elbowLeader, "Pass with %d steps OK", t.stepCount)
 		}
-
-		// TODO(jpeach): handle SeveritySkip.
 	})
 }
 
@@ -139,16 +139,15 @@ func (t *TreeWriter) NewStep(desc string) Closer {
 	t.stepErrors = map[result.Severity]int{}
 
 	return CloserFunc(func() {
-		nerr := t.stepErrors[result.SeverityFatal] + t.stepErrors[result.SeverityError]
-
-		if nerr > 0 {
-			tabPrintf(t.indent, elbowLeader, "Failed with %s ",
-				formatFailCounters(t.stepErrors))
-		} else {
+		switch {
+		case t.stepErrors[result.SeveritySkip] > 0:
+			tabPrintf(t.indent, elbowLeader, "Skipped")
+		case (t.stepErrors[result.SeverityFatal] + t.stepErrors[result.SeverityError]) > 0:
+			tabPrintf(t.indent, elbowLeader,
+				"Failed with %s ", formatFailCounters(t.stepErrors))
+		default:
 			tabPrintf(t.indent, elbowLeader, "Pass")
 		}
-
-		// TODO(jpeach): handle skipped tests.
 
 		t.indent--
 		for k, v := range t.stepErrors {
@@ -162,8 +161,6 @@ func (t *TreeWriter) Update(results ...result.Result) {
 	for _, r := range results {
 		switch r.Severity {
 		case result.SeverityNone:
-			tabPrintf(t.indent, branchLeader, "%s", r.Message)
-		case result.SeveritySkip:
 			tabPrintf(t.indent, branchLeader, "%s", r.Message)
 		default:
 			t.stepErrors[r.Severity]++
