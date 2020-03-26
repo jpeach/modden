@@ -157,6 +157,7 @@ func (t *TreeWriter) NewStep(desc string) Closer {
 	})
 }
 
+// Update ...
 func (t *TreeWriter) Update(results ...result.Result) {
 	for _, r := range results {
 		switch r.Severity {

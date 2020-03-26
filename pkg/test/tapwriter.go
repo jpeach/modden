@@ -10,11 +10,6 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
-type stepError struct {
-	Severity result.Severity `yaml:"severity" json:"severity"`
-	Message  string          `yaml:"message" json:"message"`
-}
-
 // TapWriter writes test records in TAP format.
 // See https://testanything.org/tap-version-13-specification.html
 type TapWriter struct {
@@ -28,6 +23,7 @@ type TapWriter struct {
 var _ Recorder = &TapWriter{}
 
 // indentf prints a (possibly multi-line) message, prefixed by the indent.
+// nolint(unparam)
 func indentf(indent string, format string, args ...interface{}) {
 	msg := fmt.Sprintf(format, args...)
 	for _, line := range strings.Split(msg, "\n") {
@@ -91,6 +87,7 @@ func (t *TapWriter) NewStep(desc string) Closer {
 	})
 }
 
+// Update ...
 func (t *TapWriter) Update(results ...result.Result) {
 	for _, r := range results {
 		switch r.Severity {
