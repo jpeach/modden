@@ -21,4 +21,4 @@ require (
 	sigs.k8s.io/yaml v1.1.0
 )
 
-replace github.com/open-policy-agent/opa => github.com/jpeach/opa v0.18.0-jpeach.1
+replace github.com/open-policy-agent/opa => github.com/jpeach/opa v0.18.0-jpeach.3
