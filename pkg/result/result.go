@@ -75,6 +75,8 @@ func Skipf(format string, args ...interface{}) Result {
 	return resultFrom(SeveritySkip, format, args...)
 }
 
+// Contains returns true if the results slice has an element with
+// the wanted Severity.
 func Contains(results []Result, wanted Severity) bool {
 	for _, r := range results {
 		if r.Severity == wanted {
