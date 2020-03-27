@@ -1,6 +1,9 @@
 package utils
 
-import "math/rand"
+import (
+	"math/rand"
+	"strings"
+)
 
 const alpha = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
@@ -29,4 +32,14 @@ func ContainsString(values []string, wanted string) bool {
 	}
 
 	return false
+}
+
+// JoinLines joins the given strings with "\n".
+func JoinLines(lines ...string) string {
+	switch len(lines) {
+	case 0:
+		return ""
+	default:
+		return strings.Join(lines, "\n")
+	}
 }

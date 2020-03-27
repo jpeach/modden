@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/jpeach/modden/pkg/result"
+	"github.com/jpeach/modden/pkg/utils"
 
 	"github.com/open-policy-agent/opa/ast"
 	"github.com/open-policy-agent/opa/rego"
@@ -48,10 +49,14 @@ fatal[msg] { msg = "this is the fatal error"}
 
 	expected := []result.Result{{
 		Severity: result.SeverityError,
-		Message:  "this is the error",
+		Message: utils.JoinLines(
+			"raised predicate \"error\"",
+			"this is the error"),
 	}, {
 		Severity: result.SeverityFatal,
-		Message:  "this is the fatal error",
+		Message: utils.JoinLines(
+			"raised predicate \"fatal\"",
+			"this is the fatal error"),
 	}}
 
 	assert.ElementsMatch(t, expected, results)
@@ -70,7 +75,9 @@ error [{"msg": msg, "foo": "bar"}] { msg = "this is the nested error"}
 
 	expected := []result.Result{{
 		Severity: result.SeverityError,
-		Message:  "this is the nested error",
+		Message: utils.JoinLines(
+			"raised predicate \"error\"",
+			"this is the nested error"),
 	}}
 
 	assert.ElementsMatch(t, expected, results)
@@ -89,7 +96,7 @@ error  { msg = "this error doesn't appear'"}
 
 	expected := []result.Result{{
 		Severity: result.SeverityError,
-		Message:  "rule \"error\" was true",
+		Message:  "raised predicate \"error\"",
 	}}
 
 	assert.ElementsMatch(t, expected, results)
@@ -112,9 +119,14 @@ error[num] { num := sites[_].count }
 
 	require.NoError(t, err)
 
-	// We expect no results because the type of the result will
-	// be []int, which is not supported.
-	assert.ElementsMatch(t, []result.Result{}, results)
+	expected := []result.Result{{
+		Severity: result.SeverityError,
+		Message:  "raised predicate \"error\"",
+	}}
+
+	// We expect no additional results containing 'num' because
+	// the type of the result will be []int, which is not supported.
+	assert.ElementsMatch(t, expected, results)
 }
 
 func TestStorePathItem(t *testing.T) {

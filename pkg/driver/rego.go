@@ -7,6 +7,7 @@ import (
 	"log"
 	"strings"
 
+	"github.com/jpeach/modden/pkg/must"
 	"github.com/jpeach/modden/pkg/result"
 	"github.com/jpeach/modden/pkg/utils"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/open-policy-agent/opa/storage"
 	"github.com/open-policy-agent/opa/storage/inmem"
 	"github.com/open-policy-agent/opa/topdown"
+	"sigs.k8s.io/yaml"
 )
 
 // RegoOpt is a convenience type alias.
@@ -204,13 +206,18 @@ func (r *regoDriver) Eval(m *ast.Module, opts ...RegoOpt) ([]result.Result, erro
 		// queried, and value is one or more bound messages.
 		for _, r := range resultSet {
 			for _, e := range r.Expressions {
-				for _, m := range findResultMessage(e) {
-					checkResults = append(checkResults,
-						result.Result{
-							Severity: severityForRuleName(e.Text),
-							Message:  fmt.Sprint(m),
-						})
+				msg := fmt.Sprintf("raised predicate %q", e.Text)
+
+				if m := findResultMessages(e); len(m) > 0 {
+					m = append([]string{msg}, m...)
+					msg = utils.JoinLines(m...)
 				}
+
+				checkResults = append(checkResults,
+					result.Result{
+						Severity: severityForRuleName(e.Text),
+						Message:  msg,
+					})
 			}
 		}
 
@@ -250,7 +257,7 @@ func (r *regoDriver) Eval(m *ast.Module, opts ...RegoOpt) ([]result.Result, erro
 // "msg". In the future, we could accept other types, but
 //
 // See also https://github.com/instrumenta/conftest/pull/243.
-func findResultMessage(result *rego.ExpressionValue) []string {
+func findResultMessages(result *rego.ExpressionValue) []string {
 	var messages []string
 
 	switch value := result.Value.(type) {
@@ -262,7 +269,7 @@ func findResultMessage(result *rego.ExpressionValue) []string {
 		// if the rule was true, so the value of the bool
 		// result doesn't matter. We just know there's no
 		// message.
-		return []string{fmt.Sprintf("rule %q was %t", result.Text, value)}
+		return []string{}
 
 	case string:
 		// This might be a string if the rule was this:
@@ -277,10 +284,11 @@ func findResultMessage(result *rego.ExpressionValue) []string {
 		// Handled below.
 
 	default:
-		// We don't know how to deal with this kind of result. Maybe stringify it?
-		// TODO(jpeach): this should be a fatal error.
-		log.Printf("unhandled result value type '%T'", result.Value)
-		return messages
+		// We don't know how to deal with this kind of result, so just puke it out as YAML.
+		return []string{
+			fmt.Sprintf("unhandled result value type '%T'", result.Value),
+			string(must.Bytes(yaml.Marshal(result.Value))),
+		}
 	}
 
 	// Extract messages from the value slice. The reason there is

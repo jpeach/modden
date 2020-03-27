@@ -94,10 +94,10 @@ func (t *TapWriter) Update(results ...result.Result) {
 		case result.SeverityNone:
 			indentf("# ", r.Message)
 		case result.SeveritySkip:
-			indentf(fmt.Sprintf("# %s -", string(r.Severity)), r.Message)
+			indentf(fmt.Sprintf("# %s - ", string(r.Severity)), r.Message)
 			t.stepSkips = append(t.stepSkips, r)
 		default:
-			indentf(fmt.Sprintf("# %s -", string(r.Severity)), r.Message)
+			indentf(fmt.Sprintf("# %s - ", string(r.Severity)), r.Message)
 			t.stepErrors = append(t.stepErrors, r)
 		}
 	}
