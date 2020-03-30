@@ -21,25 +21,25 @@ func IsDirPath(path string) bool {
 // files (i.e. dotfiles) are ignored.
 func WalkFiles(walkPath string, walkFn func(string) error) error {
 	if IsDirPath(walkPath) {
-		return walkFn(walkPath)
+		return filepath.Walk(walkPath, func(path string, info os.FileInfo, err error) error {
+			// If we already have an error, don't keep walking.
+			if err != nil {
+				return err
+			}
+
+			// Skip (hidden) dotfiles.
+			if strings.HasPrefix(path, ".") {
+				return nil
+			}
+
+			// Nothing to do on directories.
+			if info.IsDir() {
+				return nil
+			}
+
+			return walkFn(path)
+		})
 	}
 
-	return filepath.Walk(walkPath, func(path string, info os.FileInfo, err error) error {
-		// If we already have an error, don't keep walking.
-		if err != nil {
-			return err
-		}
-
-		// Skip (hidden) dotfiles.
-		if strings.HasPrefix(path, ".") {
-			return nil
-		}
-
-		// Nothing to do on directories.
-		if info.IsDir() {
-			return nil
-		}
-
-		return walkFn(path)
-	})
+	return walkFn(walkPath)
 }
