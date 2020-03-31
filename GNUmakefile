@@ -27,6 +27,7 @@ build: pkg/builtin/assets.go
 		-o $(BIN) .
 
 install: ## Install
+install: pkg/builtin/assets.go
 	@$(GO) install \
 		-ldflags "-X $(REPO)/pkg/version.Revision=$(REVISION)" \
 		-ldflags "-X $(REPO)/pkg/version.Sha=$(SHA)" \
