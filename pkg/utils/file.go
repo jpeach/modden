@@ -2,6 +2,7 @@ package utils
 
 import (
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 )
@@ -21,14 +22,14 @@ func IsDirPath(path string) bool {
 // files (i.e. dotfiles) are ignored.
 func WalkFiles(walkPath string, walkFn func(string) error) error {
 	if IsDirPath(walkPath) {
-		return filepath.Walk(walkPath, func(path string, info os.FileInfo, err error) error {
+		return filepath.Walk(walkPath, func(filePath string, info os.FileInfo, err error) error {
 			// If we already have an error, don't keep walking.
 			if err != nil {
 				return err
 			}
 
 			// Skip (hidden) dotfiles.
-			if strings.HasPrefix(path, ".") {
+			if strings.HasPrefix(path.Base(filePath), ".") {
 				return nil
 			}
 
@@ -37,7 +38,7 @@ func WalkFiles(walkPath string, walkFn func(string) error) error {
 				return nil
 			}
 
-			return walkFn(path)
+			return walkFn(filePath)
 		})
 	}
 
