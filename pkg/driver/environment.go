@@ -124,8 +124,7 @@ func (e *environ) HydrateObject(objData []byte) (*Object, error) {
 	// Before we make any modifications to the object we just
 	// parsed, check if we need to replace it with a fixture.
 	if val, ok := ops.Ops["$apply"]; ok {
-		fix, ok := val.(Fixture)
-		if ok {
+		if fix, ok := val.(Fixture); ok {
 			match := matchFixture(resource)
 			if match == nil {
 				return nil, fmt.Errorf("failed to match fixture")
@@ -193,13 +192,26 @@ func newSpecialOpsFilter() *filter.SpecialOpsFilter {
 		var as struct{ Fixture Fixture }
 		var str string
 
+		// We support two syntaxes for fixtures:
+		//	$apply: fixture
+		// and
+		//	$apply:
+		//	  fixture:
+		//	    as: some-other-name
+
 		if err := n.Decode(&as); err == nil {
 			ops.Ops["$apply"] = as.Fixture
 			return nil
 		}
 
 		if err := n.Decode(&str); err == nil {
-			ops.Ops["$apply"] = str
+			switch str {
+			case "fixture":
+				ops.Ops["$apply"] = Fixture{}
+			default:
+				ops.Ops["$apply"] = str
+			}
+
 			return nil
 		}
 
