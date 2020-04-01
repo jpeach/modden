@@ -548,6 +548,12 @@ func storeResourceVersions(k *driver.KubeClient, r driver.RegoDriver) error {
 	resourceVersions := map[string][]schema.GroupVersionKind{}
 
 	for _, v := range resources {
+		// Skip sub-resources. We don't care (so far), and
+		// they screw up the namespace by containing a '/'.
+		if strings.Contains(v.Name, "/") {
+			continue
+		}
+
 		resourceVersions[v.Name] = append(resourceVersions[v.Name],
 			schema.GroupVersionKind{
 				Group:   v.Group,
