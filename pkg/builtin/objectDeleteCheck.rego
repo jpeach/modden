@@ -2,7 +2,7 @@ package builtin.check.deletion
 
 # Default check for deleting Kubernetes object updates.
 
-error[msg] {
+fatal[msg] {
   # If the Error field is present, the deletion failed.
   input.error
 
