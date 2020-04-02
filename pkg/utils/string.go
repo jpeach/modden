@@ -43,3 +43,31 @@ func JoinLines(lines ...string) string {
 		return strings.Join(lines, "\n")
 	}
 }
+
+// AsStringSlice tries to coerce an interface that may actually be a []string.
+func AsStringSlice(val interface{}) ([]string, bool) {
+	switch val := val.(type) {
+	case []string:
+		return val, true
+	case []interface{}:
+		if len(val) == 0 {
+			return nil, false
+		}
+
+		str := make([]string, len(val))
+
+		for i := 0; i < len(str); i++ {
+			if s, ok := val[i].(string); ok {
+				str[i] = s
+			} else {
+				// If any element is not a string,
+				// this isn't a string slice.
+				return nil, false
+			}
+		}
+
+		return str, true
+	default:
+		return nil, false
+	}
+}

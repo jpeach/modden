@@ -202,25 +202,6 @@ func (r *regoDriver) Eval(m *ast.Module, opts ...RegoOpt) ([]result.Result, erro
 			r.tracer.Write()
 		}
 
-		// In each result, the Text is the expression that we
-		// queried, and value is one or more bound messages.
-		for _, r := range resultSet {
-			for _, e := range r.Expressions {
-				msg := fmt.Sprintf("raised predicate %q", e.Text)
-
-				if m := findResultMessages(e); len(m) > 0 {
-					m = append([]string{msg}, m...)
-					msg = utils.JoinLines(m...)
-				}
-
-				checkResults = append(checkResults,
-					result.Result{
-						Severity: severityForRuleName(e.Text),
-						Message:  msg,
-					})
-			}
-		}
-
 		// If this was a builtin error, we can return it as a
 		// result. Builtins that fail are typically those that
 		// access external resources (e.g. HTTP), in which case
@@ -233,6 +214,8 @@ func (r *regoDriver) Eval(m *ast.Module, opts ...RegoOpt) ([]result.Result, erro
 					Severity: result.SeverityError,
 					Message:  top.Error(),
 				})
+
+			// Consume the error.
 			err = nil
 		}
 
@@ -240,27 +223,42 @@ func (r *regoDriver) Eval(m *ast.Module, opts ...RegoOpt) ([]result.Result, erro
 		if err != nil {
 			return nil, err
 		}
+
+		// In each result, the Text is the expression that we
+		// queried, and value is one or more bound messages.
+		for _, r := range resultSet {
+			for _, e := range r.Expressions {
+				if r := extractResult(e); r != nil {
+					checkResults = append(checkResults, *r)
+				}
+			}
+		}
+
 	}
 
 	return checkResults, nil
 }
 
-// findResultMessage examines a rego.ExpressionValue to find the result
+// extractResult examines a rego.ExpressionValue to find the result
 // (message) of a rule that we queried . A Rego query has an optional
 // key term that can be of any type. In most cases, the term will be
 // a string, like this:
 // 	`error[msg]{ ... }`
 // but it could be anything. For example, a map like this:
 // 	`error[{"msg": "foo", "sev": "bad"}]{ ... }`
+//
 // So here, we follow the example of conftest and accept a key term
 // that is either a string or a map with a string-valued key names
 // "msg". In the future, we could accept other types, but
 //
 // See also https://github.com/instrumenta/conftest/pull/243.
-func findResultMessages(result *rego.ExpressionValue) []string {
-	var messages []string
+func extractResult(expr *rego.ExpressionValue) *result.Result {
+	res := result.Result{
+		Severity: severityForRuleName(expr.Text),
+		Message:  fmt.Sprintf("raised predicate %q", expr.Text),
+	}
 
-	switch value := result.Value.(type) {
+	switch value := expr.Value.(type) {
 	case bool:
 		// This might be a boolean if the rule was this:
 		//	`error { ... }`
@@ -269,7 +267,7 @@ func findResultMessages(result *rego.ExpressionValue) []string {
 		// if the rule was true, so the value of the bool
 		// result doesn't matter. We just know there's no
 		// message.
-		return []string{}
+		return &res
 
 	case string:
 		// This might be a string if the rule was this:
@@ -278,37 +276,55 @@ func findResultMessages(result *rego.ExpressionValue) []string {
 		//		msg := "this is a failing thing"
 		//	}`
 		//
-		return []string{value}
+		res.Message = utils.JoinLines(res.Message, value)
+		return &res
 
 	case []interface{}:
-		// Handled below.
+		// Extract messages from the value slice. The reason there is
+		// a slice is that there can be many matching cases for this
+		// rule and the query evaluates them all simultaneously. Each
+		// matching case might emit a message.
+
+		if len(value) == 0 {
+			return nil
+		}
+
+		for _, v := range value {
+			// First, see if the value is a slice of strings. We
+			// do this manually, because there's not enough type
+			// information for the `[]string` case to match below.
+			if s, ok := utils.AsStringSlice(v); ok {
+				res.Message = utils.JoinLines(res.Message,
+					utils.JoinLines(s...))
+				continue
+			}
+
+			switch value := v.(type) {
+			case string:
+				res.Message = utils.JoinLines(res.Message, value)
+			case []string:
+				res.Message = utils.JoinLines(res.Message,
+					utils.JoinLines(value...))
+			case map[string]interface{}:
+				if _, ok := value["msg"]; ok {
+					if m, ok := value["msg"].(string); ok {
+						res.Message = utils.JoinLines(res.Message, m)
+					}
+				}
+			default:
+				log.Printf("slice value of non-string %T: %v", value, value)
+			}
+		}
+
+		return &res
 
 	default:
 		// We don't know how to deal with this kind of result, so just puke it out as YAML.
-		return []string{
-			fmt.Sprintf("unhandled result value type '%T'", result.Value),
-			string(must.Bytes(yaml.Marshal(result.Value))),
-		}
-	}
+		res.Message = utils.JoinLines(res.Message,
+			fmt.Sprintf("unhandled result value type '%T'", expr.Value),
+			string(must.Bytes(yaml.Marshal(expr.Value))),
+		)
 
-	// Extract messages from the value slice. The reason there is
-	// a slice is that there can be many matching cases for this
-	// rule and the query evaluates them all simultaneously. Each
-	// matching case might emit a message.
-	for _, v := range result.Value.([]interface{}) {
-		switch value := v.(type) {
-		case string:
-			messages = append(messages, value)
-		case map[string]interface{}:
-			if _, ok := value["msg"]; ok {
-				if m, ok := value["msg"].(string); ok {
-					messages = append(messages, m)
-				}
-			}
-		default:
-			log.Printf("slice value of non-string: %v", value)
-		}
+		return &res
 	}
-
-	return messages
 }

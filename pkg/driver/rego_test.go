@@ -33,15 +33,33 @@ func parse(t *testing.T, text string) (*ast.Module, RegoOpt) {
 	return m, rego.Compiler(c)
 }
 
+func TestQueryNoResult(t *testing.T) {
+	r := NewRegoDriver()
+
+	results, err := r.Eval(parse(t,
+		` package test
+
+foo := true
+
+error[msg] { not foo; msg = "this is the error"}
+error[msg] { not foo; msg = "this is the second error"}
+fatal[msg] { input.bar; msg = "this is the fatal error"}
+`))
+
+	require.NoError(t, err)
+
+	// None of the rules are true, so their result set should be empty.
+	assert.ElementsMatch(t, []result.Result{}, results)
+}
+
 func TestQueryStringResult(t *testing.T) {
 	r := NewRegoDriver()
 
 	results, err := r.Eval(parse(t,
 		` package test
 
-warn[msg] { msg = "this is the first warning"}
-warn[msg] { msg = "this is the second warning"}
 error[msg] { msg = "this is the error"}
+error[msg] { msg = "this is the second error"}
 fatal[msg] { msg = "this is the fatal error"}
 `))
 
@@ -51,7 +69,9 @@ fatal[msg] { msg = "this is the fatal error"}
 		Severity: result.SeverityError,
 		Message: utils.JoinLines(
 			"raised predicate \"error\"",
-			"this is the error"),
+			"this is the error",
+			"this is the second error",
+		),
 	}, {
 		Severity: result.SeverityFatal,
 		Message: utils.JoinLines(
@@ -89,7 +109,7 @@ func TestQueryBoolResult(t *testing.T) {
 	results, err := r.Eval(parse(t,
 		` package test
 
-error  { msg = "this error doesn't appear'"}
+error  { msg = "this error doesn't appear"}
 `))
 
 	require.NoError(t, err)
@@ -97,6 +117,44 @@ error  { msg = "this error doesn't appear'"}
 	expected := []result.Result{{
 		Severity: result.SeverityError,
 		Message:  "raised predicate \"error\"",
+	}}
+
+	assert.ElementsMatch(t, expected, results)
+}
+
+func TestQueryStringSliceResult(t *testing.T) {
+	r := NewRegoDriver()
+
+	results, err := r.Eval(parse(t,
+		` package test
+
+error [msg] {
+  msg := [
+	"message one",
+	"message two",
+  ]
+}
+
+error [msg] {
+  msg := [
+	"message three",
+	"message four",
+  ]
+}
+
+`))
+
+	require.NoError(t, err)
+
+	expected := []result.Result{{
+		Severity: result.SeverityError,
+		Message: utils.JoinLines(
+			"raised predicate \"error\"",
+			"message one",
+			"message two",
+			"message three",
+			"message four",
+		),
 	}}
 
 	assert.ElementsMatch(t, expected, results)
