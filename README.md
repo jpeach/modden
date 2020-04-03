@@ -133,6 +133,25 @@ is_supported {
 }
 ```
 
+# Watching Resources
+
+`modden` will label and automatically watch resources that it
+creates. One reason that you want `modden` to track resources is
+so that they will be deleted at the end of a test, unless the
+`--preserve` flag is given. The other is so that they are published
+into the Rego store to be used by test checks.
+
+Sometimes, resources are created as a components of higher-level
+resources. Where possible, `modden` causes those to be labeled (this
+is what happens with pods, for example), but that is not possible
+in all cases. In particular, if the high level resource has no spec
+field that defines labels to be applied to the resources it generates.
+
+One technique to work around this is to create a stub resource in
+the test (e.g. and empty secret), knowing that the resource will
+be updated later. `modden` will label and track the resource when
+it creates the stub and will update its copy when it changes.
+
 # Writing Rego Tests
 
 ## Skipping tests
