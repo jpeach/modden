@@ -18,6 +18,7 @@ import (
 	"github.com/open-policy-agent/opa/ast"
 	"github.com/open-policy-agent/opa/rego"
 	"github.com/open-policy-agent/opa/storage"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/tools/cache"
@@ -510,7 +511,7 @@ func runCheck(
 // Namespaced resources are stored as:
 //     /resources/$namespace/$resource/$name
 func pathForResource(resource string, u *unstructured.Unstructured) string {
-	if u.GetNamespace() == "default" {
+	if u.GetNamespace() == metav1.NamespaceDefault {
 		return path.Join("/", "resources", resource, u.GetName())
 	}
 

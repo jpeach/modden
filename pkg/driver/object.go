@@ -221,7 +221,7 @@ func (o *objectDriver) Apply(obj *unstructured.Unstructured) (*OperationResult, 
 
 	if isNamespaced {
 		if ns := obj.GetNamespace(); ns == "" {
-			obj.SetNamespace("default")
+			obj.SetNamespace(metav1.NamespaceDefault)
 		}
 	}
 
@@ -301,7 +301,7 @@ func (o *objectDriver) Delete(obj *unstructured.Unstructured) (*OperationResult,
 	// Default the namespace before checking the object pool.
 	if isNamespaced {
 		if ns := obj.GetNamespace(); ns == "" {
-			obj.SetNamespace("default")
+			obj.SetNamespace(metav1.NamespaceDefault)
 		}
 	}
 

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
 )
@@ -15,7 +16,7 @@ func NamespaceOrDefault(u *unstructured.Unstructured) string {
 		return ns
 	}
 
-	return "default"
+	return metav1.NamespaceDefault
 }
 
 // NewSelectorFromObject creates a selector to match all the labels in u.
@@ -28,7 +29,7 @@ func SplitObjectName(fullName string) (string, string) {
 	parts := strings.SplitN(fullName, "/", 2)
 	switch len(parts) {
 	case 1:
-		return "default", parts[0]
+		return metav1.NamespaceDefault, parts[0]
 	case 2:
 		return parts[0], parts[1]
 	default:
