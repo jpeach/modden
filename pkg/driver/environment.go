@@ -148,16 +148,6 @@ func (e *environ) HydrateObject(objData []byte) (*Object, error) {
 		return nil, fmt.Errorf("metadata injection failed: %w", err)
 	}
 
-	meta, err := resource.GetMeta()
-	if err != nil {
-		return nil, err
-	}
-
-	id := meta.GetIdentifier()
-	if id.Namespace == "" {
-		id.Namespace = "default"
-	}
-
 	o := Object{
 		Object:    &unstructured.Unstructured{},
 		Operation: ObjectOperationUpdate,
