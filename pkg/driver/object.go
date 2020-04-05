@@ -332,12 +332,12 @@ func (o *objectDriver) Delete(obj *unstructured.Unstructured) (*OperationResult,
 	}
 	o.objectLock.Unlock()
 
-	var opts metav1.DeleteOptions
+	opts := utils.ImmediateDeletionOptions()
 
 	if isNamespaced {
-		err = o.kube.Dynamic.Resource(gvr).Namespace(obj.GetNamespace()).Delete(obj.GetName(), &opts)
+		err = o.kube.Dynamic.Resource(gvr).Namespace(obj.GetNamespace()).Delete(obj.GetName(), opts)
 	} else {
-		err = o.kube.Dynamic.Resource(gvr).Delete(obj.GetName(), &opts)
+		err = o.kube.Dynamic.Resource(gvr).Delete(obj.GetName(), opts)
 	}
 
 	switch err {

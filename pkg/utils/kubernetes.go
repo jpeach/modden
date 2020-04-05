@@ -7,7 +7,19 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/utils/pointer"
 )
+
+// ImmediateDeletionOptions returns metav1.DeleteOptions specifying
+// that the caller requires immediate foreground deletion semantics.
+func ImmediateDeletionOptions() *metav1.DeleteOptions {
+	fg := metav1.DeletePropagationForeground
+
+	return &metav1.DeleteOptions{
+		GracePeriodSeconds: pointer.Int64Ptr(0),
+		PropagationPolicy:  &fg,
+	}
+}
 
 // NamespaceOrDefault returns the namespace from u, or "default" if u
 // has no namespace field.

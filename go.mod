@@ -17,6 +17,7 @@ require (
 	k8s.io/api v0.18.0-alpha.2
 	k8s.io/apimachinery v0.18.0-alpha.2
 	k8s.io/client-go v0.18.0-alpha.2
+	k8s.io/utils v0.0.0-20191217005138-9e5e9d854fcc
 	sigs.k8s.io/kustomize/kyaml v0.0.11
 	sigs.k8s.io/yaml v1.1.0
 )
