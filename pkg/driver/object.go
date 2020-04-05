@@ -6,15 +6,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/jpeach/modden/pkg/filter"
 	"github.com/jpeach/modden/pkg/must"
 	"github.com/jpeach/modden/pkg/utils"
-	"github.com/jpeach/modden/pkg/version"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/dynamic/dynamicinformer"
@@ -74,15 +71,22 @@ type ObjectDriver interface {
 
 // NewObjectDriver returns a new ObjectDriver.
 func NewObjectDriver(client *KubeClient) ObjectDriver {
-	selector := labels.SelectorFromSet(labels.Set{filter.LabelManagedBy: version.Progname}).String()
+	// We used to inform with a managed=by=modden filter so that
+	// we would only track objects that we create ourselves.
+	// However, in some cases, it is impossible to propagate labels
+	// down the object tree because the top-level object that we
+	// create doesn't spec a template that can be used to apply
+	// labels. So, we basically have to just watch everything by
+	// type.
+
+	options := dynamicinformer.TweakListOptionsFunc(
+		func(o *metav1.ListOptions) {})
 
 	factory := dynamicinformer.NewFilteredDynamicSharedInformerFactory(
 		client.Dynamic,
 		DefaultResyncPeriod,
 		metav1.NamespaceAll,
-		func(o *metav1.ListOptions) {
-			o.LabelSelector = selector
-		},
+		options,
 	)
 
 	o := &objectDriver{
