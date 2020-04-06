@@ -21,3 +21,5 @@ require (
 	sigs.k8s.io/kustomize/kyaml v0.0.11
 	sigs.k8s.io/yaml v1.1.0
 )
+
+replace github.com/open-policy-agent/opa => github.com/jpeach/opa v0.19.0-jpeach.1
