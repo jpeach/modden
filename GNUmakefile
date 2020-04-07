@@ -28,12 +28,16 @@ help:
 
 .PHONY: build
 build: ## Build
-build: pkg/builtin/assets.go
+build: generate
 	@$(GO) build -ldflags "$(GO_BUILD_LDFLAGS)" -o $(BIN) .
 
 install: ## Install
-install: pkg/builtin/assets.go
+install: generate
 	@$(GO) install -ldflags "$(GO_BUILD_LDFLAGS)" .
+
+.PHONY: generate
+generate: ## Generate build files
+generate: pkg/builtin/assets.go
 
 pkg/builtin/assets.go: $(wildcard pkg/builtin/*.rego) $(wildcard pkg/builtin/*.yaml)
 	./hack/go-bindata.sh -pkg builtin -o $@ $^
@@ -66,7 +70,7 @@ check-lint: ## Run linters
 
 .PHONY: clean
 clean: ## Remove output files
-	$(RM_F) $(BIN) $(SRC)
+	$(RM_F) $(BIN) $(SRC) dist
 	$(RM_F) pkg/builtin/assets.go
 	$(GO) clean ./...
 
@@ -75,3 +79,13 @@ archive: ## Create a source archive
 archive: $(SRC)
 $(SRC):
 	$(GIT) archive --prefix=$(BIN)/ --format=tgz -o $@ HEAD
+
+.PHONY: release
+release:
+	# Check there is a token.
+	[[ -n "$$GITLAB_TOKEN" ]] || [[ -r ~/.config/goreleaser/github_token ]]
+	# Check we are on a tag.
+	git describe --exact-match >/dev/null
+	# Do a full dry-run.
+	SHA=$(SHA) VERSION=$(VERSION) goreleaser release --rm-dist --skip-publish --skip-validate
+	SHA=$(SHA) VERSION=$(VERSION) goreleaser release --rm-dist --skip-validate
