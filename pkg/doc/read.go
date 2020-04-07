@@ -7,55 +7,74 @@ import (
 	"os"
 	"regexp"
 
+	"github.com/jpeach/modden/pkg/must"
 	"github.com/jpeach/modden/pkg/utils"
 )
 
 // Document is a collection of related Fragments.
 type Document struct {
+	Name  string
 	Parts []Fragment
-}
-
-var splitter = regexp.MustCompile("---[\t\f\r ]*\n")
-
-func splitDocuments(data []byte, atEOF bool) (int, []byte, error) {
-	if atEOF && len(data) == 0 {
-		return 0, nil, nil
-	}
-
-	for _, m := range splitter.FindAllIndex(data, -1) {
-		// The '---' must be anchored to the start of a line,
-		// so we only accept matches that are at the beginning
-		// of a buffer or follow a newline.
-		if m[0] == 0 || data[m[0]-1] == '\n' {
-			// Token is from the buffer start until the start of the separator.
-			token := data[0:m[0]]
-			// Advance over the separator.
-			advance := m[1]
-
-			return advance, token, nil
-		}
-	}
-
-	if atEOF {
-		return len(data), bytes.TrimSuffix(data, []byte{'-', '-', '-'}), nil
-	}
-
-	// Keep reading ...
-	return 0, nil, nil
 }
 
 // ReadDocument reads a stream of Fragments that are separated by a
 // YAML document separator (see https://yaml.org/spec/1.0/#id2561718).
 // The contents of each Fragment is opaque and need not be YAML.
 func ReadDocument(in io.Reader) (*Document, error) {
+	startLine := 0
+	currentLine := 0
+
+	yamlSeparator := regexp.MustCompile("^---[\t\f\r ]*$")
+
+	buf := bytes.Buffer{}
 	doc := Document{}
 
 	scanner := bufio.NewScanner(in)
-	scanner.Split(splitDocuments)
 
+	// Scan the input a line at a time.
 	for scanner.Scan() {
-		// TODO(jpeach): Capture start and end line numbers for the fragment.
-		doc.Parts = append(doc.Parts, Fragment{Bytes: utils.CopyBytes(scanner.Bytes())})
+		currentLine++
+		if startLine == 0 {
+			startLine = currentLine
+		}
+
+		// We just read another line, so replace the newline separator.
+		if buf.Len() > 0 {
+			must.Int(buf.WriteString("\n"))
+		}
+
+		if yamlSeparator.Match(scanner.Bytes()) {
+			// Fragment must be at least one line long.
+			// If we kept empty fragments, then we would
+			// not be able to sel the line counts properly,
+			// since YAML separators are not included.
+			if buf.Len() > 0 {
+				doc.Parts = append(doc.Parts, Fragment{
+					Bytes: utils.CopyBytes(buf.Bytes()),
+					Location: Location{
+						Start: startLine,
+						End:   currentLine - 1,
+					},
+				})
+			}
+
+			startLine = 0
+			buf.Truncate(0)
+			continue
+		}
+
+		must.Int(buf.Write(scanner.Bytes()))
+	}
+
+	// Append any data from the last separator up until EOF.
+	if buf.Len() > 0 {
+		doc.Parts = append(doc.Parts, Fragment{
+			Bytes: utils.CopyBytes(buf.Bytes()),
+			Location: Location{
+				Start: startLine,
+				End:   currentLine,
+			},
+		})
 	}
 
 	if err := scanner.Err(); err != nil {
@@ -66,13 +85,19 @@ func ReadDocument(in io.Reader) (*Document, error) {
 }
 
 // ReadFile reads a Document from the given file path.
-func ReadFile(name string) (*Document, error) {
-	fh, err := os.OpenFile(name, os.O_RDONLY, 0)
+func ReadFile(filePath string) (*Document, error) {
+	fh, err := os.OpenFile(filePath, os.O_RDONLY, 0)
 	if err != nil {
 		return nil, err
 	}
 
 	defer fh.Close()
 
-	return ReadDocument(fh)
+	doc, err := ReadDocument(fh)
+	if err != nil {
+		return nil, err
+	}
+
+	doc.Name = filePath
+	return doc, nil
 }

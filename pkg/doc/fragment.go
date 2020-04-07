@@ -56,10 +56,24 @@ func (t FragmentType) String() string {
 	}
 }
 
+// Location tracks the lines that bound a Fragment within some larger Document.
+type Location struct {
+	// Start is the line number this location starts on.
+	Start int
+
+	// End is the line number this location ends on.
+	End int
+}
+
+func (l Location) String() string {
+	return fmt.Sprintf("%d-%d", l.Start, l.End)
+}
+
 // Fragment is a parseable portion of a Document.
 type Fragment struct {
-	Bytes []byte
-	Type  FragmentType
+	Bytes    []byte
+	Type     FragmentType
+	Location Location
 
 	object *unstructured.Unstructured
 	module *ast.Module

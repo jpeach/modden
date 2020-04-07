@@ -206,28 +206,30 @@ func Run(testDoc *doc.Document, opts ...RunOpt) error {
 			var obj *driver.Object
 			var opResult *driver.OperationResult
 
-			step(tc.recorder, "hydrating Kubernetes object", func() {
-				obj, err = tc.envDriver.HydrateObject(p.Bytes)
-				if err != nil {
-					tc.recorder.Update(
-						result.Fatalf("failed to hydrate object: %s", err))
-					return
-				}
+			step(tc.recorder,
+				fmt.Sprintf("hydrating Kubernetes object lines %s", p.Location),
+				func() {
+					obj, err = tc.envDriver.HydrateObject(p.Bytes)
+					if err != nil {
+						tc.recorder.Update(
+							result.Fatalf("failed to hydrate object: %s", err))
+						return
+					}
 
-				if obj.Object.GetName() == "" {
-					tc.recorder.Update(
-						result.Infof("hydrated anonymous %s:%s object",
-							obj.Object.GetAPIVersion(),
-							obj.Object.GetKind()))
-				} else {
-					tc.recorder.Update(
-						result.Infof("hydrated %s:%s object '%s/%s'",
-							obj.Object.GetAPIVersion(),
-							obj.Object.GetKind(),
-							utils.NamespaceOrDefault(obj.Object),
-							obj.Object.GetName()))
-				}
-			})
+					if obj.Object.GetName() == "" {
+						tc.recorder.Update(
+							result.Infof("hydrated anonymous %s:%s object",
+								obj.Object.GetAPIVersion(),
+								obj.Object.GetKind()))
+					} else {
+						tc.recorder.Update(
+							result.Infof("hydrated %s:%s object '%s/%s'",
+								obj.Object.GetAPIVersion(),
+								obj.Object.GetKind(),
+								utils.NamespaceOrDefault(obj.Object),
+								obj.Object.GetName()))
+					}
+				})
 
 			// If we don't have an object name, try to
 			// select it using the labels. Note that we
@@ -355,15 +357,17 @@ func Run(testDoc *doc.Document, opts ...RunOpt) error {
 			})
 
 		case doc.FragmentTypeModule:
-			step(tc.recorder, "running Rego check", func() {
-				checkResults, err := runCheck(
-					tc.regoDriver, p.Rego(), tc.checkTimeout, rego.Compiler(compiler))
-				if err != nil {
-					tc.recorder.Update(result.Fatalf("%s", err))
-				}
+			step(tc.recorder,
+				fmt.Sprintf("running Rego check lines %s", p.Location),
+				func() {
+					checkResults, err := runCheck(
+						tc.regoDriver, p.Rego(), tc.checkTimeout, rego.Compiler(compiler))
+					if err != nil {
+						tc.recorder.Update(result.Fatalf("%s", err))
+					}
 
-				tc.recorder.Update(checkResults...)
-			})
+					tc.recorder.Update(checkResults...)
+				})
 
 		case doc.FragmentTypeUnknown:
 			// Ignore unknown fragments.

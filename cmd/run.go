@@ -270,7 +270,7 @@ func validateDocument(path string, r test.Recorder) *doc.Document {
 		fragType, err := part.Decode()
 		switch err {
 		case nil:
-			r.Update(result.Infof("decoded part %d as %s", i, fragType))
+			r.Update(result.Infof("decoded part %d as %s (lines %s)", i, fragType, part.Location))
 		default:
 			if regoErr := utils.AsRegoCompilationErr(err); regoErr != nil {
 				r.Update(result.Fatalf("%s", regoErr.Error()))

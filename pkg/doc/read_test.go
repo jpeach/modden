@@ -40,22 +40,20 @@ func TestReadDocument(t *testing.T) {
 		Want: Document{
 			Parts: []Fragment{
 				{
-					Bytes: []byte{'o', 'n', 'e'},
+					Bytes:    []byte("one"),
+					Location: Location{Start: 1, End: 1},
 				},
 			},
 		},
 	})
 
+	// Empty fragments don't create anything.
 	run(t, "three empty", testcase{
 		Data: `---
 ---
 ---`,
 		Want: Document{
-			Parts: []Fragment{
-				{Bytes: []byte{}},
-				{Bytes: []byte{}},
-				{Bytes: []byte{}},
-			},
+			Parts: nil,
 		},
 	})
 
@@ -67,9 +65,9 @@ b
 c`,
 		Want: Document{
 			Parts: []Fragment{
-				{Bytes: []byte{'a', '\n'}},
-				{Bytes: []byte{'b', '\n'}},
-				{Bytes: []byte{'c'}},
+				{Bytes: []byte("a\n"), Location: Location{Start: 1, End: 1}},
+				{Bytes: []byte("b\n"), Location: Location{Start: 3, End: 3}},
+				{Bytes: []byte("c"), Location: Location{Start: 5, End: 5}},
 			},
 		},
 	})
@@ -83,9 +81,9 @@ c
 ---`,
 		Want: Document{
 			Parts: []Fragment{
-				{Bytes: []byte{'a', '\n'}},
-				{Bytes: []byte{'b', '\n'}},
-				{Bytes: []byte{'c', '\n'}},
+				{Bytes: []byte("a\n"), Location: Location{Start: 1, End: 1}},
+				{Bytes: []byte("b\n"), Location: Location{Start: 3, End: 3}},
+				{Bytes: []byte("c\n"), Location: Location{Start: 5, End: 5}},
 			},
 		},
 	})
@@ -97,8 +95,8 @@ a
 b`,
 		Want: Document{
 			Parts: []Fragment{
-				{Bytes: []byte{'f', ' ', '-', '-', '-', '\n', 'a', '\n'}},
-				{Bytes: []byte{'b'}},
+				{Bytes: []byte("f ---\na\n"), Location: Location{Start: 1, End: 2}},
+				{Bytes: []byte("b"), Location: Location{Start: 4, End: 4}},
 			},
 		},
 	})
