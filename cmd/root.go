@@ -69,7 +69,7 @@ examples and usage of using your application. For example:
 Cobra is a CLI library for Go that empowers applications.
 This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
-		Version: fmt.Sprintf("v%d.%s/%s", version.Major, version.Minor, version.Sha),
+		Version: fmt.Sprintf("%s/%s, built %s", version.Version, version.Sha, version.BuildDate),
 	}
 
 	root.AddCommand(NewRunCommand())

@@ -8,8 +8,16 @@ BIN := modden
 SRC := $(BIN).tgz
 
 REPO := github.com/jpeach/modden
-SHA := $(shell git rev-parse HEAD)
-REVISION := $(shell git rev-parse --symbolic HEAD)
+SHA := $(shell git rev-parse --short=8 HEAD)
+VERSION := $(shell ./hack/tree-version.sh)
+BUILDDATE := $(shell TZ=GMT date '+%Y-%m-%dT%R:%S%z')
+
+GO_BUILD_LDFLAGS := \
+	-s \
+	-w \
+	-X $(REPO)/pkg/version.Version=$(VERSION) \
+	-X $(REPO)/pkg/version.Sha=$(SHA) \
+	-X $(REPO)/pkg/version.BuildDate=$(BUILDDATE)
 
 .PHONY: help
 help:
@@ -21,17 +29,11 @@ help:
 .PHONY: build
 build: ## Build
 build: pkg/builtin/assets.go
-	@$(GO) build \
-		-ldflags "-X $(REPO)/pkg/version.Revision=$(REVISION)" \
-		-ldflags "-X $(REPO)/pkg/version.Sha=$(SHA)" \
-		-o $(BIN) .
+	@$(GO) build -ldflags "$(GO_BUILD_LDFLAGS)" -o $(BIN) .
 
 install: ## Install
 install: pkg/builtin/assets.go
-	@$(GO) install \
-		-ldflags "-X $(REPO)/pkg/version.Revision=$(REVISION)" \
-		-ldflags "-X $(REPO)/pkg/version.Sha=$(SHA)" \
-		.
+	@$(GO) install -ldflags "$(GO_BUILD_LDFLAGS)" .
 
 pkg/builtin/assets.go: $(wildcard pkg/builtin/*.rego) $(wildcard pkg/builtin/*.yaml)
 	./hack/go-bindata.sh -pkg builtin -o $@ $^
